@@ -1,0 +1,16 @@
+rules:
+  - name: "Battery full — turn on washer"
+    enabled: true
+    condition_logic: AND
+    conditions:
+      - field: battery_soc_pct
+        operator: gte
+        value: 95
+      - field: pv_power_w
+        operator: gt
+        value: 1000
+    actions:
+      - mqtt_topic: shellies/washer/relay/0/command
+        mqtt_payload: "on"
+    on_clear_action: reverse
+    cooldown_seconds: 300
