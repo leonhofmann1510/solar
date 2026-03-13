@@ -11,6 +11,8 @@ from app.config import settings
 from app.database import async_session, engine
 from app.models import Base, Rule
 from app.routers import readings, rules
+from app.routers.ws import manager as ws_manager
+from app.routers.ws import router as ws_router
 from app.services.mqtt import MQTTClient
 from app.services.poller import poll_loop
 
@@ -70,7 +72,7 @@ async def lifespan(app: FastAPI):
     mqtt_client = MQTTClient()
     mqtt_client.connect()
 
-    poller_task = asyncio.create_task(poll_loop(mqtt_client))
+    poller_task = asyncio.create_task(poll_loop(mqtt_client, ws_manager))
     logger.info("Poller started (interval=%ds)", settings.poll_interval_seconds)
 
     yield
@@ -89,3 +91,4 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Solar", version="1.0.0", lifespan=lifespan)
 app.include_router(readings.router)
 app.include_router(rules.router)
+app.include_router(ws_router)

@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 import asyncio
 import logging
+from dataclasses import asdict
+from typing import TYPE_CHECKING
 
 from app.config import settings
 from app.database import async_session
@@ -7,6 +11,9 @@ from app.models import InverterReading
 from app.services.modbus import InverterData, SungrowModbus
 from app.services.mqtt import MQTTClient
 from app.services.rules_engine import run_engine
+
+if TYPE_CHECKING:
+    from app.routers.ws import ConnectionManager
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +56,7 @@ def _to_orm(data: InverterData) -> InverterReading:
     )
 
 
-async def poll_loop(mqtt_client: MQTTClient) -> None:
+async def poll_loop(mqtt_client: MQTTClient, ws_manager: ConnectionManager) -> None:
     """Background polling loop — reads inverters, stores data, evaluates rules."""
     inverters = _build_inverters()
 
@@ -76,6 +83,9 @@ async def poll_loop(mqtt_client: MQTTClient) -> None:
                     logger.info("Stored %d reading(s)", len(readings))
 
                     await run_engine(session, mqtt_client, readings)
+
+                for data in readings:
+                    await ws_manager.broadcast(asdict(data))
 
             await asyncio.sleep(settings.poll_interval_seconds)
     finally:
