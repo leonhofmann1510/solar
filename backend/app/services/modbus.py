@@ -232,6 +232,7 @@ class SungrowModbus:
                 return None
 
             inp, hld = result
+            reg = {**inp, **hld}  # unified map — handles low_addr_as_holding=false where hld is empty
             r = self._regs
 
             u_pv1 = self._get(inp, r.pv_u1) or 0.0
@@ -252,7 +253,7 @@ class SungrowModbus:
                 pv_yield_today_kwh=self._get(inp, r.pv_yield_today) or 0.0,
                 feed_in_today_kwh=self._get(inp, r.feed_in_today),
                 grid_buy_today_kwh=self._get(inp, r.grid_buy_today),
-                inverter_temp_c=self._get(hld, r.inverter_temp) or 0.0,
+                inverter_temp_c=self._get(reg, r.inverter_temp) or 0.0,
                 grid_frequency_hz=self._get(inp, r.grid_frequency) or 0.0,
             )
 

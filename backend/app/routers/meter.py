@@ -110,9 +110,6 @@ async def get_readings(
         result = await session.execute(query, {"trunc": trunc, "fmt": fmt, "since": since})
         rows = result.fetchall()
 
-    for row in rows:
-        print(row.consumption_kwh)
-
     return [
         MeterPoint(
             label=row.label,

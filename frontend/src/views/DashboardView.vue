@@ -94,7 +94,7 @@ const idleRules = computed(() =>
       <BatteryCard :soc="batterySoc" :power="batteryPower" :loading="loading" />
       <StatCard
         label="House Load"
-        :value="houseLoad != null ? houseLoad*10 : null"
+        :value="houseLoad != null ? houseLoad : null"
         unit="W"
         icon="pi pi-home"
         color="neutral"
