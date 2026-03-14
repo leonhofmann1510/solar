@@ -132,7 +132,7 @@ const actionCapabilities = computed(() =>
     :pt="{ root: { style: 'border-radius: 12px; overflow: hidden' }, header: { style: 'border-bottom: 1px solid var(--sf-border)' } }"
   >
     <TabView v-if="device">
-      <TabPanel header="Info">
+      <TabPanel value="info" header="Info">
         <div class="space-y-4 py-2">
           <div>
             <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1">Name</label>
@@ -166,7 +166,7 @@ const actionCapabilities = computed(() =>
         </div>
       </TabPanel>
 
-      <TabPanel header="State">
+      <TabPanel value="state" header="State">
         <div class="py-2">
           <table v-if="device.capabilities.length > 0" class="w-full text-sm">
             <thead>
@@ -200,7 +200,7 @@ const actionCapabilities = computed(() =>
         </div>
       </TabPanel>
 
-      <TabPanel header="Settings">
+      <TabPanel value="settings" header="Settings">
         <div class="space-y-4 py-2">
           <div class="flex items-center justify-between">
             <label class="text-sm font-medium text-sf-text-1">Enabled</label>
