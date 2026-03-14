@@ -25,10 +25,18 @@ class Settings(BaseSettings):
     # Rules
     rules_file_path: str = "/app/rules/example_rules.yaml"
 
-    # Tuya Cloud (one-time key fetch)
-    tuya_api_key: str = ""
-    tuya_api_secret: str = ""
-    tuya_api_region: str = "eu"
+    # Tuya (QR login — no API key needed)
+    tuya_region: str = "eu"
+
+    @property
+    def tuya_endpoint(self) -> str:
+        endpoints = {
+            "eu": "https://px1.tuyaeu.com",
+            "us": "https://px1.tuyaus.com",
+            "in": "https://px1.tuyain.com",
+            "cn": "https://px1.tuyacn.com",
+        }
+        return endpoints.get(self.tuya_region, "https://px1.tuyaeu.com")
 
     # Discovery
     zigbee2mqtt_bridge_topic: str = "zigbee2mqtt/bridge/devices"

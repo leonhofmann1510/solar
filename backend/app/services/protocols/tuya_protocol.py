@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from sqlalchemy import select
@@ -41,7 +42,7 @@ async def read_state(device: Device) -> dict[str, dict]:
         return {}
 
     try:
-        status = d.status()
+        status = await asyncio.to_thread(d.status)
     except Exception:
         logger.exception("Failed to read Tuya device %d (%s)", device.id, device.raw_id)
         return {}
@@ -90,7 +91,7 @@ async def set_dp(
             device.id, device.raw_id, cap.tuya_dp_id, value,
             (device.meta or {}).get("tuya_version", "3.3"),
         )
-        response = d.set_value(cap.tuya_dp_id, value)
+        response = await asyncio.to_thread(d.set_value, cap.tuya_dp_id, value)
         logger.info("Tuya set_value response for device=%d: %s", device.id, response)
         if response and isinstance(response, dict) and response.get("Error"):
             logger.error(

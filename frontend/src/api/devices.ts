@@ -46,6 +46,25 @@ export const devicesApi = {
     return data
   },
 
+  async startTuyaLogin(
+    userCode: string,
+  ): Promise<{ session_id: string; qr_url: string }> {
+    const { data } = await client.post<{ session_id: string; qr_url: string }>(
+      '/api/devices/discover/tuya/start',
+      { user_code: userCode },
+    )
+    return data
+  },
+
+  async getTuyaLoginStatus(
+    sessionId: string,
+  ): Promise<{ status: string; devices_found: number }> {
+    const { data } = await client.get<{ status: string; devices_found: number }>(
+      `/api/devices/discover/tuya/status/${sessionId}`,
+    )
+    return data
+  },
+
   async discoverMdns(): Promise<{ discovered: number }> {
     const { data } = await client.post<{ discovered: number }>('/api/devices/discover/mdns')
     return data

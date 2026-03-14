@@ -1,11 +1,10 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import settings
 from app.database import get_session
 from app.models import Device, DeviceCapability, DeviceState
 from app.schemas import (
@@ -16,6 +15,7 @@ from app.schemas import (
     DeviceOut,
     DeviceStateOut,
     DeviceUpdate,
+    TuyaLoginStart,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,68 +36,42 @@ def set_dependencies(mqtt_client, ws_manager) -> None:
 # --- Discovery ---
 
 
-@router.post("/discover/tuya")
-async def discover_tuya():
-    from app.services.discovery.tuya_discovery import fetch_tuya_devices
+@router.post("/discover/tuya/start")
+async def start_tuya_login(body: TuyaLoginStart):
+    """Start a Tuya QR login session.
 
-    count = await fetch_tuya_devices(
-        settings.tuya_api_key, settings.tuya_api_secret, settings.tuya_api_region,
-    )
-    return {"discovered": count}
+    The frontend encodes the returned qr_url as a QR image for the user to scan
+    with the Smart Life app.
+    Returns { session_id, qr_url }.
+    """
+    from app.services.discovery.tuya_discovery import start_qr_login
+
+    try:
+        result = await start_qr_login(body.user_code)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    return result
+
+
+@router.get("/discover/tuya/status/{session_id}")
+async def tuya_login_status(session_id: str):
+    """Poll whether the user has scanned the QR code.
+
+    Returns { status: "pending" | "success" | "failed", devices_found: int }.
+    The frontend polls this every 2s after showing the QR code.
+    """
+    from app.services.discovery.tuya_discovery import poll_login_status
+
+    return await poll_login_status(session_id)
 
 
 @router.post("/scan/tuya")
-async def scan_tuya_network(session: AsyncSession = Depends(get_session)):
+async def scan_tuya_network():
     """Scan the local network for Tuya devices and update their IP addresses."""
-    try:
-        import tinytuya
-    except ImportError:
-        raise HTTPException(500, "tinytuya not installed")
+    from app.services.discovery.tuya_discovery import scan_and_update_ips
 
-    import asyncio
-
-    # Run the blocking network scan in a thread
-    loop = asyncio.get_event_loop()
-    try:
-        scan_results = await loop.run_in_executor(None, lambda: tinytuya.deviceScan(verbose=False))
-    except Exception as e:
-        logger.exception("Tuya network scan failed")
-        raise HTTPException(500, f"Scan failed: {e}")
-
-    if not scan_results:
-        return {"updated": 0, "scanned": 0}
-
-    # Build a map of device_id -> {ip, version} from scan results
-    id_to_scan: dict[str, dict] = {}
-    for ip, info in scan_results.items():
-        gwId = info.get("gwId", "")
-        if gwId:
-            id_to_scan[gwId] = {"ip": ip, "version": str(info.get("version", "3.3"))}
-
-    # Update matching devices in the database
-    result = await session.execute(
-        select(Device).where(Device.protocol == "tuya")
-    )
-    devices = result.scalars().all()
-
-    updated = 0
-    for device in devices:
-        scan_info = id_to_scan.get(device.raw_id)
-        if not scan_info:
-            continue
-        new_ip = scan_info["ip"]
-        version = scan_info["version"]
-        if new_ip != device.ip_address or (device.meta or {}).get("tuya_version") != version:
-            device.ip_address = new_ip
-            device.meta = {**(device.meta or {}), "tuya_version": version}
-            updated += 1
-            logger.info(
-                "Updated Tuya device %s (%s) IP=%s version=%s",
-                device.name, device.raw_id, new_ip, version,
-            )
-
-    await session.commit()
-    return {"updated": updated, "scanned": len(id_to_scan)}
+    return await scan_and_update_ips()
 
 
 @router.post("/discover/mdns")

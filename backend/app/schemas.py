@@ -150,3 +150,7 @@ class DeviceUpdate(BaseModel):
 class DeviceActionRequest(BaseModel):
     capability_key: str
     value: bool | int | float | str
+
+
+class TuyaLoginStart(BaseModel):
+    user_code: str

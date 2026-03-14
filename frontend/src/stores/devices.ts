@@ -1,35 +1,36 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { devicesApi } from '@/api/devices'
 import type { Device, DeviceActionRequest, DeviceConfirm, DeviceUpdate } from '@/types/device'
 
 export const useDevicesStore = defineStore('devices', () => {
   const devices = ref<Device[]>([])
   const pending = ref<Device[]>([])
-  const loading = ref(false)
+  const loadingDevices = ref(false)
+  const loadingPending = ref(false)
+  const loading = computed(() => loadingDevices.value || loadingPending.value)
   const error = ref<string | null>(null)
 
   async function fetchAll() {
-    loading.value = true
-    error.value = null
+    loadingDevices.value = true
     try {
       devices.value = await devicesApi.getAll()
+      error.value = null
     } catch (e: any) {
       error.value = e.message
     } finally {
-      loading.value = false
+      loadingDevices.value = false
     }
   }
 
   async function fetchPending() {
-    loading.value = true
-    error.value = null
+    loadingPending.value = true
     try {
       pending.value = await devicesApi.getPending()
     } catch (e: any) {
       error.value = e.message
     } finally {
-      loading.value = false
+      loadingPending.value = false
     }
   }
 
@@ -55,12 +56,6 @@ export const useDevicesStore = defineStore('devices', () => {
 
   async function sendAction(id: number, payload: DeviceActionRequest) {
     return await devicesApi.action(id, payload)
-  }
-
-  async function discoverTuya() {
-    const result = await devicesApi.discoverTuya()
-    if (result.discovered > 0) await fetchPending()
-    return result
   }
 
   async function discoverMdns() {
@@ -110,7 +105,6 @@ export const useDevicesStore = defineStore('devices', () => {
     update,
     remove,
     sendAction,
-    discoverTuya,
     discoverMdns,
     scanTuyaNetwork,
     updateDeviceState,

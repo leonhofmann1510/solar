@@ -16,7 +16,6 @@ const confirmName = ref('')
 const confirmRoom = ref('')
 const confirmingId = ref<number | null>(null)
 
-const discoveringTuya = ref(false)
 const discoveringMdns = ref(false)
 const scanningTuya = ref(false)
 const discoveryMessage = ref<string | null>(null)
@@ -85,19 +84,6 @@ async function toggleEnabled(device: Device) {
   await store.update(device.id, { enabled: !device.enabled })
 }
 
-async function runDiscoverTuya() {
-  discoveringTuya.value = true
-  discoveryMessage.value = null
-  try {
-    const result = await store.discoverTuya()
-    discoveryMessage.value = `Tuya: ${result.discovered} new device(s) found`
-  } catch (e: any) {
-    discoveryMessage.value = `Tuya error: ${e.response?.data?.detail || e.message}`
-  } finally {
-    discoveringTuya.value = false
-  }
-}
-
 async function runDiscoverMdns() {
   discoveringMdns.value = true
   discoveryMessage.value = null
@@ -156,9 +142,7 @@ async function readRawDps() {
     <!-- Discovery -->
     <section>
       <h2>Discovery</h2>
-      <button @click="runDiscoverTuya" :disabled="discoveringTuya">
-        {{ discoveringTuya ? 'Scanning Tuya...' : 'Discover Tuya' }}
-      </button>
+      <p>To link Tuya devices, go to <router-link to="/settings">Settings</router-link>.</p>
       <button @click="runDiscoverMdns" :disabled="discoveringMdns">
         {{ discoveringMdns ? 'Scanning mDNS...' : 'Discover mDNS' }}
       </button>
