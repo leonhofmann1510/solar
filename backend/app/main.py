@@ -1,16 +1,19 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from functools import partial
 from pathlib import Path
 
 import yaml
+from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from app.config import settings
 from app.database import async_session, engine
-from app.models import Base, Rule
+from app.models import Rule
 from app.routers import devices, meter, readings, rules
 from app.routers.ws import manager as ws_manager
 from app.routers.ws import router as ws_router
@@ -95,12 +98,18 @@ def _make_mqtt_message_handler(mqtt_client: MQTTClient):
     return on_message
 
 
+async def _run_migrations() -> None:
+    """Run Alembic migrations to head on startup (idempotent, safe to run every time)."""
+    cfg = AlembicConfig("alembic.ini")
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, partial(alembic_command.upgrade, cfg, "head"))
+    logger.info("Database migrations applied")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables ready")
+    await _run_migrations()
 
     await _seed_rules_from_file()
 
