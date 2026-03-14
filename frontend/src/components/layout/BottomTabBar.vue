@@ -1,13 +1,21 @@
 <script setup lang="ts">
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useMeterStore } from '@/stores/meter'
 
 const route = useRoute()
+const meterStore = useMeterStore()
 
-const navItems = [
+onMounted(() => meterStore.fetchStatus())
+
+const navItems = computed(() => [
   { to: '/', label: 'Dashboard', icon: 'pi pi-home' },
   { to: '/devices', label: 'Devices', icon: 'pi pi-objects-column' },
   { to: '/rules', label: 'Rules', icon: 'pi pi-bolt' },
-]
+  ...(meterStore.status.enabled
+    ? [{ to: '/meter', label: 'Meter', icon: 'pi pi-chart-line' }]
+    : []),
+])
 
 function isActive(to: string) {
   if (to === '/') return route.path === '/'

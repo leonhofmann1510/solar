@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import async_session, engine
 from app.models import Base, Rule
-from app.routers import devices, readings, rules
+from app.routers import devices, meter, readings, rules
 from app.routers.ws import manager as ws_manager
 from app.routers.ws import router as ws_router
 from app.services.device_poller import poll_device_states
@@ -160,4 +160,5 @@ app.add_middleware(
 app.include_router(readings.router)
 app.include_router(rules.router)
 app.include_router(devices.router)
+app.include_router(meter.router)
 app.include_router(ws_router)

@@ -28,6 +28,11 @@ const router = createRouter({
       name: 'rule-edit',
       component: () => import('@/views/RuleEditView.vue'),
     },
+    {
+      path: '/meter',
+      name: 'meter',
+      component: () => import('@/views/MeterView.vue'),
+    },
   ],
 })
 

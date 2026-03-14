@@ -38,6 +38,10 @@ class Settings(BaseSettings):
         }
         return endpoints.get(self.tuya_region, "https://px1.tuyaeu.com")
 
+    # Smart Meter (Bitshake HTTP reader)
+    smart_meter_enabled: bool = False
+    smart_meter_ip: str = ""
+
     # Discovery
     zigbee2mqtt_bridge_topic: str = "zigbee2mqtt/bridge/devices"
     mdns_scan_timeout_seconds: int = 10

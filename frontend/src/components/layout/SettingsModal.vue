@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useTuyaSetup } from '@/composables/useTuyaSetup'
+import { useMeterStore } from '@/stores/meter'
 import QRCode from 'qrcode'
+
+const meterStore = useMeterStore()
+onMounted(() => meterStore.fetchStatus())
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
@@ -20,6 +24,7 @@ const sections = [
   { key: 'general', label: 'General', icon: 'pi pi-sliders-h' },
   { key: 'inverters', label: 'Inverters', icon: 'pi pi-server' },
   { key: 'mqtt', label: 'MQTT', icon: 'pi pi-share-alt' },
+  { key: 'meter', label: 'Smart Meter', icon: 'pi pi-chart-line' },
   { key: 'tuya', label: 'Tuya Setup', icon: 'pi pi-qrcode' },
   { key: 'about', label: 'About', icon: 'pi pi-info-circle' },
 ] as const
@@ -189,6 +194,31 @@ function handleTuyaReset() {
             <InputText modelValue="••••••••" disabled type="password" class="w-full text-sm" />
           </div>
           <p class="text-xs text-sf-text-3">MQTT settings are configured via environment variables on the server.</p>
+        </div>
+
+        <!-- Smart Meter -->
+        <div v-if="activeSection === 'meter'" class="space-y-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1">Status</label>
+              <p class="text-sm text-sf-text-1">Smart Meter monitoring</p>
+            </div>
+            <Tag
+              :value="meterStore.status.enabled ? 'Enabled' : 'Disabled'"
+              :severity="meterStore.status.enabled ? 'success' : 'secondary'"
+            />
+          </div>
+          <div v-if="meterStore.status.enabled">
+            <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Device IP</label>
+            <InputText :modelValue="meterStore.status.ip" disabled class="w-full text-sm" />
+          </div>
+          <p class="text-xs text-sf-text-3">
+            Smart meter settings are configured via <code class="bg-slate-100 px-1 rounded">SMART_METER_ENABLED</code>
+            and <code class="bg-slate-100 px-1 rounded">SMART_METER_IP</code> environment variables on the server.
+          </p>
+          <router-link v-if="meterStore.status.enabled" to="/meter" @click="dialogVisible = false">
+            <Button label="Open Meter Page" icon="pi pi-chart-line" severity="secondary" class="w-full" />
+          </router-link>
         </div>
 
         <!-- Tuya Setup -->

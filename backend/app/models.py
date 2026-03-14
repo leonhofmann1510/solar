@@ -31,6 +31,17 @@ class InverterReading(Base):
     grid_frequency_hz: Mapped[float] = mapped_column(Float)
 
 
+class MeterReading(Base):
+    __tablename__ = "meter_readings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    consumption_kwh: Mapped[float] = mapped_column(Float)
+    feed_in_kwh: Mapped[float] = mapped_column(Float)
+
+
 class Rule(Base):
     __tablename__ = "rules"
 
