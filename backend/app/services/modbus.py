@@ -10,13 +10,13 @@ logging.getLogger("pymodbus").setLevel(logging.CRITICAL)
 
 # Register offsets relative to base address 13000
 REG_PV_YIELD_TODAY = 1   # 13001
-REG_PV_POWER = 7         # 13007
+REG_HOUSE_LOAD = 7       # 13007
+REG_PV_POWER = 8         # 13008
 REG_GRID_POWER = 9       # 13009
 REG_PV_U1 = 10           # 13010
 REG_PV_I1 = 11           # 13011
 REG_PV_U2 = 12           # 13012
 REG_PV_I2 = 13           # 13013
-REG_HOUSE_LOAD = 16      # 13016
 REG_BATTERY_POWER = 21   # 13021
 REG_BATTERY_SOC = 22     # 13022
 

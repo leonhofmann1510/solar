@@ -42,12 +42,6 @@ const dateStr = computed(() => {
 
 const loading = computed(() => !readingsStore.inv1 && !readingsStore.inv2)
 
-const totalPvPowerDisplay = computed(() => {
-  const a = readingsStore.inv1?.pv_power_w ?? 0
-  const b = readingsStore.inv2?.pv_power_w ?? 0
-  return ((a + b) / 1000).toFixed(1)
-})
-
 const gridPowerW = computed(() => readingsStore.inv1?.grid_power_w ?? null)
 const batterySoc = computed(() => readingsStore.inv1?.battery_soc_pct ?? null)
 const batteryPower = computed(() => readingsStore.inv1?.battery_power_w ?? null)
@@ -86,7 +80,7 @@ const idleRules = computed(() =>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
       <StatCard
         label="PV Power"
-        :value="totalPvPowerDisplay"
+        :value="readingsStore.inv1?.pv_power_w"
         unit="kW"
         icon="pi pi-sun"
         color="green"
@@ -150,7 +144,6 @@ const idleRules = computed(() =>
         <template v-if="readingsStore.inv1">
           <div class="flex items-center gap-4 text-xs text-sf-text-2">
             <span>Temp: {{ readingsStore.inv1.inverter_temp_c }}°C</span>
-            <span>Freq: {{ readingsStore.inv1.grid_frequency_hz.toFixed(1) }} Hz</span>
             <span>PV: {{ (readingsStore.inv1.pv_power_w / 1000).toFixed(1) }} kW</span>
           </div>
         </template>
@@ -164,8 +157,8 @@ const idleRules = computed(() =>
         </div>
         <template v-if="readingsStore.inv2">
           <div class="flex items-center gap-4 text-xs text-sf-text-2">
-            <span>PV: {{ (readingsStore.inv2.pv_power_w / 1000).toFixed(1) }} kW</span>
             <span>Temp: {{ readingsStore.inv2.inverter_temp_c }}°C</span>
+            <span>PV: {{ (readingsStore.inv2.pv_power_w / 1000).toFixed(1) }} kW</span>
           </div>
         </template>
         <Skeleton v-else height="1rem" width="60%" />

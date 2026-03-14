@@ -35,7 +35,7 @@ defineProps<{
     <template v-else>
       <div class="flex items-baseline gap-1">
         <span class="text-2xl font-semibold text-sf-text-1">
-          {{ value ?? '—' }}
+          {{ value ?? '' }}
         </span>
         <span v-if="unit && value != null" class="text-sm text-sf-text-2">
           {{ unit }}
