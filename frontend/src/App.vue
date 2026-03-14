@@ -13,9 +13,16 @@ const wsConnected = ref(false)
 let socket: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
+function wsUrl(): string {
+  const base = import.meta.env.VITE_WS_BASE_URL
+  if (base) return `${base}/ws`
+  // Docker / reverse-proxy: derive from the page origin
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${window.location.host}/ws`
+}
+
 function connect() {
-  const url = `${import.meta.env.VITE_WS_BASE_URL}/ws`
-  socket = new WebSocket(url)
+  socket = new WebSocket(wsUrl())
 
   socket.onopen = () => {
     wsConnected.value = true
