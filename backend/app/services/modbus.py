@@ -229,6 +229,11 @@ class SungrowModbus:
         try:
             result = self._read_all()
             if result is None:
+                logger.info("[%s] Read failed — reconnecting and retrying", self.inverter_id)
+                self._client.close()
+                self._client.connect()
+                result = self._read_all()
+            if result is None:
                 return None
 
             inp, hld = result
