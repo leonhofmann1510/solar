@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     # Rules
     rules_file_path: str = "/app/rules/example_rules.yaml"
 
+    # Tuya Cloud (one-time key fetch)
+    tuya_api_key: str = ""
+    tuya_api_secret: str = ""
+    tuya_api_region: str = "eu"
+
+    # Discovery
+    zigbee2mqtt_bridge_topic: str = "zigbee2mqtt/bridge/devices"
+    mdns_scan_timeout_seconds: int = 10
+
     @property
     def database_url(self) -> str:
         return (

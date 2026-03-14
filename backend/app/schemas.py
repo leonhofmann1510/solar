@@ -83,3 +83,70 @@ class RuleEventOut(BaseModel):
     mqtt_payload: str
 
     model_config = {"from_attributes": True}
+
+
+# --- Devices ---
+
+
+class DeviceCapabilitySchema(BaseModel):
+    key: str
+    display_name: str
+    capability_type: str
+    data_type: str
+    min_value: float | None = None
+    max_value: float | None = None
+    unit: str | None = None
+    mqtt_command_topic: str | None = None
+    mqtt_state_topic: str | None = None
+    tuya_dp_id: int | None = None
+
+
+class DeviceCapabilityOut(DeviceCapabilitySchema):
+    id: int
+    device_id: int
+
+    model_config = {"from_attributes": True}
+
+
+class DeviceStateOut(BaseModel):
+    capability_key: str
+    value_boolean: bool | None
+    value_numeric: float | None
+    value_string: str | None
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DeviceOut(BaseModel):
+    id: int
+    name: str
+    protocol: str
+    confirmed: bool
+    enabled: bool
+    room: str | None
+    raw_id: str
+    ip_address: str | None
+    mqtt_base_topic: str | None
+    first_seen_at: datetime
+    last_seen_at: datetime
+    capabilities: list[DeviceCapabilityOut] = []
+    states: list[DeviceStateOut] = []
+
+    model_config = {"from_attributes": True}
+
+
+class DeviceConfirm(BaseModel):
+    name: str
+    room: str | None = None
+
+
+class DeviceUpdate(BaseModel):
+    name: str | None = None
+    room: str | None = None
+    enabled: bool | None = None
+
+
+class DeviceActionRequest(BaseModel):
+    capability_key: str
+    value: bool | int | float | str
