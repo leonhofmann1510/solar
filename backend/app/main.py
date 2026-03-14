@@ -9,7 +9,7 @@ from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.config import settings
 from app.database import async_session, engine
@@ -99,9 +99,28 @@ def _make_mqtt_message_handler(mqtt_client: MQTTClient):
 
 
 async def _run_migrations() -> None:
-    """Run Alembic migrations to head on startup (idempotent, safe to run every time)."""
+    """Run Alembic migrations to head on startup (idempotent, safe to run every time).
+
+    Handles the case where tables were created by create_all (no alembic_version
+    tracking yet): stamps the DB at revision 004 so only migration 005+ are applied.
+    """
     cfg = AlembicConfig("alembic.ini")
     loop = asyncio.get_running_loop()
+
+    async with engine.connect() as conn:
+        has_alembic = await conn.scalar(text(
+            "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='alembic_version')"
+        ))
+        if not has_alembic:
+            has_tables = await conn.scalar(text(
+                "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='inverter_readings')"
+            ))
+            if has_tables:
+                # Tables exist but were created outside Alembic — stamp at 004 so
+                # migration 005 (nullable columns) is the only thing that runs.
+                logger.info("Untracked DB detected — stamping at revision 004 before upgrade")
+                await loop.run_in_executor(None, partial(alembic_command.stamp, cfg, "004"))
+
     await loop.run_in_executor(None, partial(alembic_command.upgrade, cfg, "head"))
     logger.info("Database migrations applied")
 
