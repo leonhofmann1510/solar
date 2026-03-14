@@ -47,7 +47,11 @@ const batterySoc = computed(() => readingsStore.inv1?.battery_soc_pct ?? null)
 const batteryPower = computed(() => readingsStore.inv1?.battery_power_w ?? null)
 const houseLoad = computed(() => readingsStore.inv1?.house_load_w ?? null)
 
-const yieldToday = computed(() => readingsStore.inv1?.pv_yield_today_kwh ?? null)
+const yieldToday = computed(() => {
+  if (readingsStore.inv1?.pv_yield_today_kwh == null || readingsStore.inv2?.pv_yield_today_kwh == null) return null
+  console.log(readingsStore.inv2?.pv_yield_today_kwh)
+  return Math.max(0, readingsStore.inv1?.pv_yield_today_kwh+readingsStore.inv2?.pv_yield_today_kwh)
+})
 const feedInToday = computed(() => readingsStore.inv1?.feed_in_today_kwh ?? null)
 const gridBuyToday = computed(() => readingsStore.inv1?.grid_buy_today_kwh ?? null)
 const selfConsumption = computed(() => {
@@ -90,7 +94,7 @@ const idleRules = computed(() =>
       <BatteryCard :soc="batterySoc" :power="batteryPower" :loading="loading" />
       <StatCard
         label="House Load"
-        :value="houseLoad != null ? houseLoad : null"
+        :value="houseLoad != null ? houseLoad*10 : null"
         unit="W"
         icon="pi pi-home"
         color="neutral"

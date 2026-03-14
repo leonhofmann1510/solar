@@ -9,7 +9,7 @@ from app.config import settings
 from app.database import async_session
 from app.models import InverterReading, MeterReading
 from app.services.meter import BitshakeSmartMeter, MeterData
-from app.services.modbus import InverterData, SungrowModbus
+from app.services.modbus import InverterData, SungrowModbus, load_inverter_configs
 from app.services.mqtt import MQTTClient
 from app.services.rules_engine import run_engine
 
@@ -20,22 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 def _build_inverters() -> list[SungrowModbus]:
-    return [
-        SungrowModbus(
-            ip=settings.modbus_ip_inverter_1,
-            port=settings.modbus_port,
-            unit_id=settings.modbus_unit_id,
-            inverter_id="inv1",
-            has_battery=True,
-        ),
-        SungrowModbus(
-            ip=settings.modbus_ip_inverter_2,
-            port=settings.modbus_port,
-            unit_id=settings.modbus_unit_id,
-            inverter_id="inv2",
-            has_battery=False,
-        ),
-    ]
+    configs = load_inverter_configs(settings.inverters_config_path)
+    return [SungrowModbus(cfg) for cfg in configs]
 
 
 def _meter_to_orm(data: MeterData) -> MeterReading:

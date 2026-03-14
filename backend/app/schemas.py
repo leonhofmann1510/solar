@@ -15,11 +15,11 @@ class ReadingOut(BaseModel):
     pv_string2_w: float
     battery_soc_pct: float | None
     battery_power_w: float | None
-    grid_power_w: float
-    house_load_w: float
+    grid_power_w: float | None
+    house_load_w: float | None
     pv_yield_today_kwh: float
-    feed_in_today_kwh: float
-    grid_buy_today_kwh: float
+    feed_in_today_kwh: float | None
+    grid_buy_today_kwh: float | None
     inverter_temp_c: float
     grid_frequency_hz: float
 

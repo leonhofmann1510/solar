@@ -20,6 +20,7 @@ services:
       - "8000:8000"
     volumes:
       - ./rules:/app/rules
+      - ./inverters.yaml:/app/inverters.yaml
 
   frontend:
     build: ./frontend

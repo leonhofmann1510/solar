@@ -1,0 +1,61 @@
+# Inverter Modbus register configuration
+#
+# Each inverter entry defines its connection settings and the absolute
+# register addresses for every data point — no offsets, no base math.
+#
+# Register type is detected automatically by address (default behaviour):
+#   address >= 10000  →  Input register   (read_input_registers / FC4)
+#   address <  10000  →  Holding register (read_holding_registers / FC3)
+#
+# Override with low_addr_as_holding: false to force FC4 for all addresses
+# (needed for SG-series inverters where 5xxx are input registers).
+#
+# All raw values are divided by 10 (Sungrow stores in 0.1 units).
+# grid_power and battery_power are sign-extended from 16-bit unsigned.
+#
+# Set battery_power / battery_soc / grid_frequency to null when not present.
+
+inverters:
+  - id: inv1
+    ip: 192.168.178.24
+    port: 502
+    unit_id: 1
+    has_battery: true
+    registers:
+      pv_yield_today:  13001
+      house_load:      13007
+      pv_power:        13008
+      grid_power:      13009
+      pv_u1:           13010
+      pv_i1:           13011
+      pv_u2:           13012
+      pv_i2:           13013
+      battery_power:   13021
+      battery_soc:     13022
+      grid_buy_today:  13035
+      feed_in_today:   13044
+      inverter_temp:   5003
+      grid_frequency:  null   # set to register address if available
+
+  - id: inv2
+    ip: 192.168.178.26
+    port: 502
+    unit_id: 1
+    has_battery: false
+    low_addr_as_holding: false  # SG series: all registers are input (FC4 / read_input_registers)
+    registers:
+      pv_yield_today:  5002
+      pv_yield_total:  5003
+      pv_power:        5016
+      house_load:      null
+      grid_power:      null
+      pv_u1:           5010
+      pv_i1:           5011
+      pv_u2:           5012
+      pv_i2:           5013
+      battery_power:   null    
+      battery_soc:     null    
+      grid_buy_today:  null    
+      feed_in_today:   null    
+      grid_frequency:  5035    
+      inverter_temp:   5007

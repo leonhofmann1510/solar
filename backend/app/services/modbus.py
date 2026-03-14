@@ -1,43 +1,66 @@
-import logging
-from dataclasses import dataclass
-from datetime import UTC, datetime
+"""Sungrow Modbus TCP reader with fully configurable register addresses.
 
+Register addresses are absolute (e.g. 13007), exactly as shown in the
+inverter's Modbus documentation — no base offsets, no manual arithmetic.
+
+Detection of register type is automatic:
+  address >= 10000  →  input   register  (read_input_registers)
+  address <  10000  →  holding register  (read_holding_registers)
+
+Reads are batched into the minimal contiguous blocks needed to cover all
+configured addresses, keeping TCP round-trips low.
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+
+import yaml
 from pymodbus.client import ModbusTcpClient
 
 logger = logging.getLogger(__name__)
-# Keep third-party Modbus logs quiet; we emit contextual errors ourselves.
 logging.getLogger("pymodbus").setLevel(logging.CRITICAL)
-
-# Register offsets relative to base address 13000
-REG_PV_YIELD_TODAY = 1   # 13001
-REG_HOUSE_LOAD = 7       # 13007
-REG_PV_POWER = 8         # 13008
-REG_GRID_POWER = 9       # 13009
-REG_PV_U1 = 10           # 13010
-REG_PV_I1 = 11           # 13011
-REG_PV_U2 = 12           # 13012
-REG_PV_I2 = 13           # 13013
-REG_BATTERY_POWER = 21   # 13021
-REG_BATTERY_SOC = 22     # 13022
-
-# Offsets relative to base address 13035
-REG_GRID_BUY_TODAY = 0   # 13035
-REG_FEED_IN_TODAY = 9    # 13044
-
-# Temperature register
-REG_INVERTER_TEMP = 3    # 5003 (from holding registers block at 5000)
-
-BASE_REALTIME = 13000
-REALTIME_COUNT = 30
-BASE_COUNTER = 13035
-COUNTER_COUNT = 15
-BASE_DEVICE = 5000
-DEVICE_COUNT = 8
 
 
 def _signed(val: int) -> int:
-    """Convert unsigned 16-bit to signed (for grid/battery power)."""
+    """Convert unsigned 16-bit to signed (Sungrow two's complement)."""
     return val if val < 32768 else val - 65536
+
+
+# ── Data classes ──────────────────────────────────────────────────────────────
+
+@dataclass
+class RegisterMap:
+    """Absolute Modbus addresses for every data point of one inverter.
+    Set any field to None if the inverter does not expose that register.
+    """
+    pv_yield_today: int | None
+    pv_power: int | None
+    pv_u1: int | None
+    pv_i1: int | None
+    pv_u2: int | None
+    pv_i2: int | None
+    inverter_temp: int | None
+    house_load: int | None = None
+    grid_power: int | None = None
+    grid_buy_today: int | None = None
+    feed_in_today: int | None = None
+    battery_power: int | None = None
+    battery_soc: int | None = None
+    grid_frequency: int | None = None
+
+
+@dataclass
+class InverterConfig:
+    id: str
+    ip: str
+    port: int
+    unit_id: int
+    has_battery: bool
+    registers: RegisterMap
+    low_addr_as_holding: bool = True  # if False, all addresses use FC4 (input registers)
 
 
 @dataclass
@@ -49,117 +72,211 @@ class InverterData:
     pv_string2_w: float
     battery_soc_pct: float | None
     battery_power_w: float | None
-    grid_power_w: float
-    house_load_w: float
+    grid_power_w: float | None
+    house_load_w: float | None
     pv_yield_today_kwh: float
-    feed_in_today_kwh: float
-    grid_buy_today_kwh: float
+    feed_in_today_kwh: float | None
+    grid_buy_today_kwh: float | None
     inverter_temp_c: float
     grid_frequency_hz: float
 
 
-class SungrowModbus:
-    """Reads live data from a Sungrow inverter via Modbus TCP."""
+# ── YAML loader ───────────────────────────────────────────────────────────────
 
-    def __init__(self, ip: str, port: int, unit_id: int, inverter_id: str, *, has_battery: bool):
-        self.ip = ip
-        self.inverter_id = inverter_id
-        self.has_battery = has_battery
-        self._client = ModbusTcpClient(ip, port=port, timeout=3)
-        self._unit_id = unit_id
+def load_inverter_configs(path: str) -> list[InverterConfig]:
+    """Load inverter configs from a YAML file. Returns an empty list on error."""
+    p = Path(path)
+    if not p.exists():
+        logger.error("Inverters config not found: %s", p)
+        return []
+
+    with open(p) as f:
+        raw = yaml.safe_load(f)
+
+    configs: list[InverterConfig] = []
+    for entry in raw.get("inverters", []):
+        regs = entry["registers"]
+        configs.append(InverterConfig(
+            id=entry["id"],
+            ip=entry["ip"],
+            port=entry.get("port", 502),
+            unit_id=entry.get("unit_id", 1),
+            has_battery=entry.get("has_battery", False),
+            low_addr_as_holding=entry.get("low_addr_as_holding", True),
+            registers=RegisterMap(
+                pv_yield_today=regs["pv_yield_today"],
+                house_load=regs["house_load"],
+                pv_power=regs["pv_power"],
+                grid_power=regs["grid_power"],
+                pv_u1=regs["pv_u1"],
+                pv_i1=regs["pv_i1"],
+                pv_u2=regs["pv_u2"],
+                pv_i2=regs["pv_i2"],
+                grid_buy_today=regs["grid_buy_today"],
+                feed_in_today=regs["feed_in_today"],
+                inverter_temp=regs["inverter_temp"],
+                battery_power=regs.get("battery_power"),
+                battery_soc=regs.get("battery_soc"),
+                grid_frequency=regs.get("grid_frequency"),
+            ),
+        ))
+        logger.info("Loaded inverter config: %s @ %s:%d", entry["id"], entry["ip"], entry.get("port", 502))
+
+    return configs
+
+
+# ── Modbus client ─────────────────────────────────────────────────────────────
+
+class SungrowModbus:
+    """Reads live data from a Sungrow inverter using absolute register addresses."""
+
+    def __init__(self, cfg: InverterConfig) -> None:
+        self.inverter_id = cfg.id
+        self.ip = cfg.ip
+        self._cfg = cfg
+        self._regs = cfg.registers
+        self._client = ModbusTcpClient(cfg.ip, port=cfg.port, timeout=3)
+        self._unit = cfg.unit_id
 
     def connect(self) -> bool:
         return self._client.connect()
 
-    def _log_block_error(self, block_name: str, address: int, count: int, response: object) -> None:
-        function_code = getattr(response, "function_code", None)
-        exception_code = getattr(response, "exception_code", None)
-        logger.error(
-            "Modbus %s read failed on %s (ip=%s, unit=%s, addr=%s, count=%s, function=%s, exception=%s)",
-            block_name,
-            self.inverter_id,
-            self.ip,
-            self._unit_id,
-            address,
-            count,
-            function_code,
-            exception_code,
-        )
+    def close(self) -> None:
+        self._client.close()
 
-    def _read_input_block_with_fallback(self, block_name: str, base: int, count: int):
-        response = self._client.read_input_registers(base, count=count, slave=self._unit_id)
-        if not response.isError():
-            return response
+    # ── Internal helpers ──────────────────────────────────────────────────────
 
-        # Some devices/maps are documented 1-based but queried 0-based (or vice versa).
-        if getattr(response, "exception_code", None) == 2 and base > 0:
-            fallback_base = base - 1
-            fallback = self._client.read_input_registers(
-                fallback_base,
-                count=count,
-                slave=self._unit_id,
+    def _read_block(self, addresses: list[int], holding: bool) -> dict[int, int] | None:
+        """Read a minimal contiguous block covering all given addresses.
+
+        Returns a dict mapping absolute address → raw register value,
+        or None if the read failed.
+        """
+        if not addresses:
+            return {}
+
+        min_addr = min(addresses)
+        max_addr = max(addresses)
+        count = max_addr - min_addr + 1
+
+        if holding:
+            resp = self._client.read_holding_registers(min_addr, count=count, slave=self._unit)
+        else:
+            resp = self._client.read_input_registers(min_addr, count=count, slave=self._unit)
+
+        if resp.isError():
+            logger.error(
+                "Modbus %s read failed on %s (addr=%d count=%d fc=%s exc=%s)",
+                "holding" if holding else "input",
+                self.inverter_id,
+                min_addr, count,
+                getattr(resp, "function_code", None),
+                getattr(resp, "exception_code", None),
             )
-            if not fallback.isError():
-                logger.warning(
-                    "Using %s fallback address for %s (ip=%s, unit=%s, base=%s -> %s)",
-                    block_name,
-                    self.inverter_id,
-                    self.ip,
-                    self._unit_id,
-                    base,
-                    fallback_base,
-                )
-                return fallback
+            return None
 
-        return response
+        return {min_addr + i: v for i, v in enumerate(resp.registers)}
+
+    def _read_all(self) -> tuple[dict[int, int], dict[int, int]] | None:
+        """Fetch input and holding registers in one call each.
+
+        Returns (input_map, holding_map) or None on any failure.
+        """
+        r = self._regs
+
+        all_addrs = [
+            a for a in [
+                r.pv_yield_today, r.house_load, r.pv_power, r.grid_power,
+                r.pv_u1, r.pv_i1, r.pv_u2, r.pv_i2,
+                r.battery_power, r.battery_soc,
+                r.grid_buy_today, r.feed_in_today,
+                r.grid_frequency, r.inverter_temp,
+            ]
+            if a is not None
+        ]
+
+        if self._cfg.low_addr_as_holding:
+            input_addrs = [a for a in all_addrs if a >= 10000]
+            holding_addrs = [a for a in all_addrs if a < 10000]
+        else:
+            input_addrs = all_addrs
+            holding_addrs = []
+
+        input_map = self._read_block(input_addrs, holding=False)
+        if input_map is None:
+            return None
+
+        holding_map = self._read_block(holding_addrs, holding=True)
+        if holding_map is None:
+            return None
+
+        return input_map, holding_map
+
+    @staticmethod
+    def _get(reg_map: dict[int, int], address: int | None, *, signed: bool = False) -> float | None:
+        """Look up an address in a register map and return the scaled value."""
+        if address is None:
+            return None
+        raw = reg_map.get(address)
+        if raw is None:
+            return None
+        val = _signed(raw) if signed else raw
+        return val / 10.0
+
+    # ── Public read ───────────────────────────────────────────────────────────
 
     def read(self) -> InverterData | None:
-        """Read all registers and return a structured InverterData, or None on failure."""
         try:
-            # Some non-battery inverters expose a shorter realtime block.
-            realtime_count = REALTIME_COUNT if self.has_battery else (REG_HOUSE_LOAD + 1)
-
-            rt = self._read_input_block_with_fallback("realtime(input)", BASE_REALTIME, realtime_count)
-            ct = self._read_input_block_with_fallback("counter(input)", BASE_COUNTER, COUNTER_COUNT)
-            # Sungrow temperature register block (5000+) is a holding-register block.
-            dev = self._client.read_holding_registers(BASE_DEVICE, count=DEVICE_COUNT, slave=self._unit_id)
-
-            if rt.isError():
-                self._log_block_error("realtime(input)", BASE_REALTIME, realtime_count, rt)
-                return None
-            if ct.isError():
-                self._log_block_error("counter(input)", BASE_COUNTER, COUNTER_COUNT, ct)
-                return None
-            if dev.isError():
-                self._log_block_error("device(holding)", BASE_DEVICE, DEVICE_COUNT, dev)
+            result = self._read_all()
+            if result is None:
                 return None
 
-            r, z, d = rt.registers, ct.registers, dev.registers
+            inp, hld = result
+            r = self._regs
 
-            u_pv1 = r[REG_PV_U1] / 10.0
-            i_pv1 = r[REG_PV_I1] / 10.0
-            u_pv2 = r[REG_PV_U2] / 10.0
-            i_pv2 = r[REG_PV_I2] / 10.0
+            u_pv1 = self._get(inp, r.pv_u1) or 0.0
+            i_pv1 = self._get(inp, r.pv_i1) or 0.0
+            u_pv2 = self._get(inp, r.pv_u2) or 0.0
+            i_pv2 = self._get(inp, r.pv_i2) or 0.0
 
-            return InverterData(
+            data = InverterData(
                 inverter_id=self.inverter_id,
                 timestamp=datetime.now(UTC),
-                pv_power_w=float(r[REG_PV_POWER]),
+                pv_power_w=self._get(inp, r.pv_power) or 0.0,
                 pv_string1_w=round(u_pv1 * i_pv1, 1),
                 pv_string2_w=round(u_pv2 * i_pv2, 1),
-                battery_soc_pct=r[REG_BATTERY_SOC] / 10.0 if self.has_battery else None,
-                battery_power_w=float(_signed(r[REG_BATTERY_POWER])) if self.has_battery else None,
-                grid_power_w=float(_signed(r[REG_GRID_POWER])),
-                house_load_w=float(r[REG_HOUSE_LOAD]),
-                pv_yield_today_kwh=r[REG_PV_YIELD_TODAY] / 10.0,
-                feed_in_today_kwh=z[REG_FEED_IN_TODAY] / 10.0,
-                grid_buy_today_kwh=z[REG_GRID_BUY_TODAY] / 10.0,
-                inverter_temp_c=d[REG_INVERTER_TEMP] / 10.0,
-                grid_frequency_hz=r[7 + 1] / 10.0 if len(r) > 8 else 50.0,
+                battery_soc_pct=self._get(inp, r.battery_soc),
+                battery_power_w=self._get(inp, r.battery_power, signed=True),
+                grid_power_w=self._get(inp, r.grid_power, signed=True),
+                house_load_w=self._get(inp, r.house_load),
+                pv_yield_today_kwh=self._get(inp, r.pv_yield_today) or 0.0,
+                feed_in_today_kwh=self._get(inp, r.feed_in_today),
+                grid_buy_today_kwh=self._get(inp, r.grid_buy_today),
+                inverter_temp_c=self._get(hld, r.inverter_temp) or 0.0,
+                grid_frequency_hz=self._get(inp, r.grid_frequency) or 0.0,
             )
+
+            logger.info(
+                "[%s] pv=%.0fW str1=%.0fW str2=%.0fW yield=%.2fkWh "
+                "grid=%s house=%s bat_soc=%s bat_pwr=%s "
+                "feed_in=%s grid_buy=%s temp=%.1f°C freq=%.2fHz",
+                data.inverter_id,
+                data.pv_power_w,
+                data.pv_string1_w,
+                data.pv_string2_w,
+                data.pv_yield_today_kwh,
+                f"{data.grid_power_w:.0f}W" if data.grid_power_w is not None else "n/a",
+                f"{data.house_load_w:.0f}W" if data.house_load_w is not None else "n/a",
+                f"{data.battery_soc_pct:.0f}%" if data.battery_soc_pct is not None else "n/a",
+                f"{data.battery_power_w:.0f}W" if data.battery_power_w is not None else "n/a",
+                f"{data.feed_in_today_kwh:.2f}kWh" if data.feed_in_today_kwh is not None else "n/a",
+                f"{data.grid_buy_today_kwh:.2f}kWh" if data.grid_buy_today_kwh is not None else "n/a",
+                data.inverter_temp_c,
+                data.grid_frequency_hz,
+            )
+
+            return data
+
         except Exception:
             logger.exception("Failed to read inverter %s", self.inverter_id)
             return None
-
-    def close(self) -> None:
-        self._client.close()

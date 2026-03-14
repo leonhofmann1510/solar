@@ -9,11 +9,8 @@ class Settings(BaseSettings):
     db_password: str = "changeme"
     db_name: str = "solar"
 
-    # Modbus
-    modbus_ip_inverter_1: str = "192.168.178.1"
-    modbus_ip_inverter_2: str = "192.168.178.2"
-    modbus_port: int = 502
-    modbus_unit_id: int = 1
+    # Modbus / inverter config
+    inverters_config_path: str = "../inverters.yaml"
     poll_interval_seconds: int = 30
 
     # MQTT
