@@ -53,7 +53,16 @@ def _to_orm(data: InverterData) -> InverterReading:
 
 async def poll_loop(mqtt_client: MQTTClient, ws_manager: ConnectionManager) -> None:
     """Background polling loop — reads inverters + smart meter, stores data, evaluates rules."""
-    inverters = _build_inverters()
+    try:
+        inverters = _build_inverters()
+    except Exception:
+        logger.exception("Failed to load inverter config — poller cannot start")
+        return
+
+    if not inverters:
+        logger.error("No inverters loaded (check INVERTERS_CONFIG_PATH and inverters.yaml) — poller will not poll")
+        return
+
     meter = BitshakeSmartMeter(ip=settings.smart_meter_ip) if settings.smart_meter_enabled else None
 
     for inv in inverters:
@@ -67,38 +76,42 @@ async def poll_loop(mqtt_client: MQTTClient, ws_manager: ConnectionManager) -> N
 
     try:
         while True:
-            readings: list[InverterData] = []
+            try:
+                readings: list[InverterData] = []
 
-            for inv in inverters:
-                data = inv.read()
-                if data:
-                    readings.append(data)
+                for inv in inverters:
+                    data = inv.read()
+                    if data:
+                        readings.append(data)
 
-            if readings:
-                async with async_session() as session:
-                    for data in readings:
-                        session.add(_to_orm(data))
-                    await session.commit()
-                    logger.info("Stored %d inverter reading(s)", len(readings))
-
-                    await run_engine(session, mqtt_client, readings)
-
-                for data in readings:
-                    await ws_manager.broadcast(asdict(data))
-
-            # Poll smart meter independently — failures don't affect inverter polling
-            if meter:
-                meter_data = await meter.fetch()
-                if meter_data:
+                if readings:
                     async with async_session() as session:
-                        session.add(_meter_to_orm(meter_data))
+                        for data in readings:
+                            session.add(_to_orm(data))
                         await session.commit()
-                    await ws_manager.broadcast({
-                        "event": "meter_reading",
-                        "timestamp": meter_data.timestamp.isoformat(),
-                        "consumption_kwh": meter_data.consumption_kwh,
-                        "feed_in_kwh": meter_data.feed_in_kwh,
-                    })
+                        logger.info("Stored %d inverter reading(s)", len(readings))
+
+                        await run_engine(session, mqtt_client, readings)
+
+                    for data in readings:
+                        await ws_manager.broadcast(asdict(data))
+
+                # Poll smart meter independently — failures don't affect inverter polling
+                if meter:
+                    meter_data = await meter.fetch()
+                    if meter_data:
+                        async with async_session() as session:
+                            session.add(_meter_to_orm(meter_data))
+                            await session.commit()
+                        await ws_manager.broadcast({
+                            "event": "meter_reading",
+                            "timestamp": meter_data.timestamp.isoformat(),
+                            "consumption_kwh": meter_data.consumption_kwh,
+                            "feed_in_kwh": meter_data.feed_in_kwh,
+                        })
+
+            except Exception:
+                logger.exception("Unhandled error in poll iteration — will retry next cycle")
 
             await asyncio.sleep(settings.poll_interval_seconds)
     finally:
