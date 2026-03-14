@@ -1,97 +1,64 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useDevicesStore } from '@/stores/devices'
-import { devicesApi } from '@/api/devices'
-import type { Device, DeviceCapability, DeviceState } from '@/types/device'
+import AppShell from '@/components/layout/AppShell.vue'
+import SectionHeader from '@/components/shared/SectionHeader.vue'
+import EmptyState from '@/components/shared/EmptyState.vue'
+import PendingDevicesBanner from '@/components/devices/PendingDevicesBanner.vue'
+import DeviceModal from '@/components/devices/DeviceModal.vue'
+import StatusDot from '@/components/shared/StatusDot.vue'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import Tag from 'primevue/tag'
+import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
+import InputText from 'primevue/inputtext'
+import Skeleton from 'primevue/skeleton'
+import type { Device } from '@/types/device'
 
 const store = useDevicesStore()
 
-const actionDeviceId = ref<number | null>(null)
-const actionCapabilityKey = ref('')
-const actionValue = ref('')
-const actionResult = ref<string | null>(null)
-const actionError = ref<string | null>(null)
-
-const confirmName = ref('')
-const confirmRoom = ref('')
-const confirmingId = ref<number | null>(null)
+const selectedDevice = ref<Device | null>(null)
+const deviceModalVisible = ref(false)
 
 const discoveringMdns = ref(false)
 const scanningTuya = ref(false)
-const discoveryMessage = ref<string | null>(null)
+
+// Pending confirm form
+const confirmDialogVisible = ref(false)
+const confirmingDevice = ref<Device | null>(null)
+const confirmName = ref('')
+const confirmRoom = ref('')
+const confirmLoading = ref(false)
 
 onMounted(async () => {
   await Promise.all([store.fetchAll(), store.fetchPending()])
 })
 
-function getStateValue(device: Device, capKey: string): string {
-  const state = device.states.find((s) => s.capability_key === capKey)
-  if (!state) return '—'
-  if (state.value_boolean !== null) return String(state.value_boolean)
-  if (state.value_numeric !== null) return String(state.value_numeric)
-  if (state.value_string !== null) return state.value_string
-  return '—'
+function openDeviceModal(device: Device) {
+  selectedDevice.value = device
+  deviceModalVisible.value = true
 }
 
-async function sendAction() {
-  if (actionDeviceId.value === null || !actionCapabilityKey.value) return
-  actionResult.value = null
-  actionError.value = null
-
-  let parsedValue: boolean | number | string = actionValue.value
-  if (actionValue.value === 'true') parsedValue = true
-  else if (actionValue.value === 'false') parsedValue = false
-  else if (!isNaN(Number(actionValue.value)) && actionValue.value.trim() !== '') {
-    parsedValue = Number(actionValue.value)
-  }
-
-  try {
-    const result = await store.sendAction(actionDeviceId.value, {
-      capability_key: actionCapabilityKey.value,
-      value: parsedValue,
-    })
-    actionResult.value = JSON.stringify(result, null, 2)
-  } catch (e: any) {
-    actionError.value = e.response?.data?.detail || e.message
+function protocolSeverity(protocol: string) {
+  switch (protocol) {
+    case 'mqtt': return 'info'
+    case 'tuya': return 'warn'
+    case 'mdns': return 'secondary'
+    default: return 'secondary'
   }
 }
 
-function startConfirm(device: Device) {
-  confirmingId.value = device.id
-  confirmName.value = device.name
-  confirmRoom.value = ''
-}
-
-async function submitConfirm() {
-  if (confirmingId.value === null) return
-  try {
-    await store.confirm(confirmingId.value, {
-      name: confirmName.value,
-      room: confirmRoom.value || null,
-    })
-    confirmingId.value = null
-  } catch (e: any) {
-    alert('Confirm failed: ' + (e.response?.data?.detail || e.message))
-  }
-}
-
-async function deleteDevice(id: number) {
-  if (!window.confirm('Delete this device?')) return
-  await store.remove(id)
-}
-
-async function toggleEnabled(device: Device) {
-  await store.update(device.id, { enabled: !device.enabled })
+function deviceOnline(device: Device) {
+  if (!device.last_seen_at) return false
+  const age = Date.now() - new Date(device.last_seen_at).getTime()
+  return age < 120_000
 }
 
 async function runDiscoverMdns() {
   discoveringMdns.value = true
-  discoveryMessage.value = null
   try {
-    const result = await store.discoverMdns()
-    discoveryMessage.value = `mDNS: ${result.discovered} new device(s) found`
-  } catch (e: any) {
-    discoveryMessage.value = `mDNS error: ${e.response?.data?.detail || e.message}`
+    await store.discoverMdns()
   } finally {
     discoveringMdns.value = false
   }
@@ -99,257 +66,212 @@ async function runDiscoverMdns() {
 
 async function runScanTuya() {
   scanningTuya.value = true
-  discoveryMessage.value = null
   try {
-    const result = await store.scanTuyaNetwork()
-    discoveryMessage.value = `Tuya scan: ${result.scanned} device(s) found on network, ${result.updated} IP(s) updated`
-  } catch (e: any) {
-    discoveryMessage.value = `Tuya scan error: ${e.response?.data?.detail || e.message}`
+    await store.scanTuyaNetwork()
   } finally {
     scanningTuya.value = false
   }
 }
 
-async function reload() {
-  await Promise.all([store.fetchAll(), store.fetchPending()])
+function startConfirm(device: Device) {
+  confirmingDevice.value = device
+  confirmName.value = device.name
+  confirmRoom.value = ''
+  confirmDialogVisible.value = true
 }
 
-const readDeviceId = ref<number | null>(null)
-const readResult = ref<Record<string, unknown> | null>(null)
-const readError = ref<string | null>(null)
-const reading = ref(false)
-
-async function readRawDps() {
-  if (readDeviceId.value === null) return
-  readResult.value = null
-  readError.value = null
-  reading.value = true
+async function submitConfirm() {
+  if (!confirmingDevice.value) return
+  confirmLoading.value = true
   try {
-    const result = await devicesApi.readRawDps(readDeviceId.value)
-    readResult.value = result.raw_dps
-  } catch (e: any) {
-    readError.value = e.response?.data?.detail || e.message
+    await store.confirm(confirmingDevice.value.id, {
+      name: confirmName.value,
+      room: confirmRoom.value || null,
+    })
+    confirmDialogVisible.value = false
   } finally {
-    reading.value = false
+    confirmLoading.value = false
   }
+}
+
+async function deletePending(id: number) {
+  await store.remove(id)
+}
+
+function onDeviceUpdated() {
+  store.fetchAll()
 }
 </script>
 
 <template>
-  <div>
-    <h1>Devices</h1>
+  <AppShell>
+    <SectionHeader title="Devices">
+      <template #actions>
+        <Button
+          icon="pi pi-search"
+          label="Scan Network"
+          size="small"
+          outlined
+          @click="runDiscoverMdns"
+          :loading="discoveringMdns"
+          class="hidden sm:inline-flex"
+        />
+        <Button
+          icon="pi pi-wifi"
+          label="Fetch Tuya"
+          size="small"
+          outlined
+          @click="runScanTuya"
+          :loading="scanningTuya"
+          class="hidden sm:inline-flex"
+        />
+        <!-- Mobile: icon-only buttons -->
+        <Button
+          icon="pi pi-search"
+          size="small"
+          outlined
+          @click="runDiscoverMdns"
+          :loading="discoveringMdns"
+          class="sm:hidden"
+          aria-label="Scan Network"
+        />
+        <Button
+          icon="pi pi-wifi"
+          size="small"
+          outlined
+          @click="runScanTuya"
+          :loading="scanningTuya"
+          class="sm:hidden"
+          aria-label="Fetch Tuya"
+        />
+      </template>
+    </SectionHeader>
 
-    <!-- Discovery -->
-    <section>
-      <h2>Discovery</h2>
-      <p>To link Tuya devices, go to <router-link to="/settings">Settings</router-link>.</p>
-      <button @click="runDiscoverMdns" :disabled="discoveringMdns">
-        {{ discoveringMdns ? 'Scanning mDNS...' : 'Discover mDNS' }}
-      </button>
-      <button @click="runScanTuya" :disabled="scanningTuya">
-        {{ scanningTuya ? 'Scanning network...' : 'Scan Tuya IPs' }}
-      </button>
-      <button @click="reload">Reload</button>
-      <p>Z2M and Shelly/Tasmota devices are discovered automatically via MQTT.</p>
-      <p v-if="discoveryMessage"><strong>{{ discoveryMessage }}</strong></p>
-    </section>
+    <!-- Pending banner -->
+    <div v-if="store.pending.length > 0" class="mb-4">
+      <PendingDevicesBanner />
+    </div>
 
-    <!-- Pending Devices -->
-    <section>
-      <h2>Pending Devices ({{ store.pending.length }})</h2>
-      <p v-if="store.pending.length === 0">No pending devices.</p>
-      <table v-else>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Protocol</th>
-            <th>Raw ID</th>
-            <th>IP</th>
-            <th>Capabilities</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="device in store.pending" :key="device.id">
-            <td>{{ device.id }}</td>
-            <td>{{ device.name }}</td>
-            <td>{{ device.protocol }}</td>
-            <td>{{ device.raw_id }}</td>
-            <td>{{ device.ip_address || '—' }}</td>
-            <td>{{ device.capabilities.map(c => c.key).join(', ') || '—' }}</td>
-            <td>
-              <button @click="startConfirm(device)">Confirm</button>
-              <button @click="deleteDevice(device.id)">Delete</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <!-- Confirm form -->
-      <div v-if="confirmingId !== null">
-        <h3>Confirm Device #{{ confirmingId }}</h3>
-        <label>Name: <input v-model="confirmName" /></label>
-        <label>Room: <input v-model="confirmRoom" placeholder="optional" /></label>
-        <button @click="submitConfirm">Submit</button>
-        <button @click="confirmingId = null">Cancel</button>
-      </div>
-    </section>
-
-    <!-- Confirmed Devices -->
-    <section>
-      <h2>Confirmed Devices ({{ store.devices.length }})</h2>
-      <p v-if="store.loading">Loading...</p>
-      <p v-if="store.error">Error: {{ store.error }}</p>
-      <p v-if="!store.loading && store.devices.length === 0">No confirmed devices.</p>
-
-      <div v-for="device in store.devices" :key="device.id">
-        <h3>
-          {{ device.name }}
-          <small>({{ device.protocol }}, ID={{ device.id }})</small>
-        </h3>
-        <p>
-          Raw ID: {{ device.raw_id }} |
-          IP: {{ device.ip_address || '—' }} |
-          Enabled: {{ device.enabled }} |
-          Room: {{ device.room || '—' }} |
-          Last seen: {{ device.last_seen_at }}
-        </p>
-        <button @click="toggleEnabled(device)">
-          {{ device.enabled ? 'Disable' : 'Enable' }}
-        </button>
-        <button @click="deleteDevice(device.id)">Delete</button>
-
-        <h4>Capabilities</h4>
-        <table v-if="device.capabilities.length > 0">
-          <thead>
-            <tr>
-              <th>Key</th>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Data Type</th>
-              <th>Unit</th>
-              <th>Range</th>
-              <th>Current Value</th>
-              <th>Tuya DP</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="cap in device.capabilities" :key="cap.key">
-              <td>{{ cap.key }}</td>
-              <td>{{ cap.display_name }}</td>
-              <td>{{ cap.capability_type }}</td>
-              <td>{{ cap.data_type }}</td>
-              <td>{{ cap.unit || '—' }}</td>
-              <td>
-                <span v-if="cap.min_value !== null || cap.max_value !== null">
-                  {{ cap.min_value ?? '' }} — {{ cap.max_value ?? '' }}
-                </span>
-                <span v-else>—</span>
-              </td>
-              <td>{{ getStateValue(device, cap.key) }}</td>
-              <td>{{ cap.tuya_dp_id ?? '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p v-else>No capabilities.</p>
-        <hr />
-      </div>
-    </section>
-
-    <!-- Action Test Endpoint -->
-    <section>
-      <h2>Test Action (POST /api/devices/{'{id}'}/action)</h2>
-      <p>Send a command to a device to test connectivity and capability config.</p>
-
-      <div>
-        <label>
-          Device ID:
-          <select v-model="actionDeviceId">
-            <option :value="null" disabled>Select a device</option>
-            <option
-              v-for="device in store.devices"
-              :key="device.id"
-              :value="device.id"
-            >
-              {{ device.name }} ({{ device.protocol }}, #{{ device.id }})
-            </option>
-          </select>
-        </label>
-      </div>
-
-      <div>
-        <label>
-          Capability Key:
-          <select v-model="actionCapabilityKey">
-            <option value="" disabled>Select a capability</option>
-            <template v-if="actionDeviceId !== null">
-              <option
-                v-for="cap in store.devices.find(d => d.id === actionDeviceId)?.capabilities.filter(c => c.capability_type === 'both' || c.capability_type === 'action') ?? []"
-                :key="cap.key"
-                :value="cap.key"
-              >
-                {{ cap.key }} ({{ cap.data_type }})
-              </option>
+    <!-- Pending devices table -->
+    <div v-if="store.pending.length > 0" class="mb-6">
+      <h3 class="text-sm font-medium text-sf-text-2 uppercase tracking-wider mb-3">Pending Confirmation</h3>
+      <div class="bg-sf-surface rounded-sf shadow-sf overflow-hidden">
+        <DataTable :value="store.pending" :rows="10" responsiveLayout="scroll" class="text-sm">
+          <Column field="name" header="Name">
+            <template #body="{ data }">
+              <span class="font-medium text-sf-text-1">{{ data.name }}</span>
             </template>
-          </select>
-        </label>
+          </Column>
+          <Column field="protocol" header="Protocol" class="hidden md:table-cell">
+            <template #body="{ data }">
+              <Tag :value="data.protocol.toUpperCase()" :severity="protocolSeverity(data.protocol)" />
+            </template>
+          </Column>
+          <Column field="raw_id" header="ID" class="hidden md:table-cell">
+            <template #body="{ data }">
+              <span class="text-xs text-sf-text-3 font-mono">{{ data.raw_id.substring(0, 20) }}{{ data.raw_id.length > 20 ? '...' : '' }}</span>
+            </template>
+          </Column>
+          <Column header="Actions" style="width: 140px">
+            <template #body="{ data }">
+              <div class="flex gap-1">
+                <Button label="Confirm" size="small" @click="startConfirm(data)" />
+                <Button icon="pi pi-trash" size="small" severity="danger" text @click="deletePending(data.id)" aria-label="Delete" />
+              </div>
+            </template>
+          </Column>
+        </DataTable>
       </div>
+    </div>
 
-      <div>
-        <label>
-          Value:
-          <input v-model="actionValue" placeholder="true / false / 0 / 1 / on / off" />
-        </label>
+    <!-- Confirmed devices table -->
+    <div class="bg-sf-surface rounded-sf shadow-sf overflow-hidden">
+      <template v-if="store.loading">
+        <div class="p-6 space-y-3">
+          <Skeleton height="2rem" />
+          <Skeleton height="2rem" />
+          <Skeleton height="2rem" />
+        </div>
+      </template>
+      <template v-else-if="store.devices.length === 0">
+        <EmptyState
+          icon="pi pi-objects-column"
+          title="No devices yet"
+          message="Scan your network or link your Tuya account to discover devices."
+        />
+      </template>
+      <template v-else>
+        <DataTable
+          :value="store.devices"
+          :rows="20"
+          :paginator="store.devices.length > 20"
+          responsiveLayout="scroll"
+          class="text-sm"
+          @row-click="(e: any) => openDeviceModal(e.data)"
+          :rowHover="true"
+          style="cursor: pointer"
+        >
+          <Column field="name" header="Name" :sortable="true">
+            <template #body="{ data }">
+              <span class="font-medium text-sf-text-1">{{ data.name }}</span>
+            </template>
+          </Column>
+          <Column field="protocol" header="Protocol" :sortable="true" style="width: 100px">
+            <template #body="{ data }">
+              <Tag :value="data.protocol.toUpperCase()" :severity="protocolSeverity(data.protocol)" />
+            </template>
+          </Column>
+          <Column header="Status" style="width: 100px">
+            <template #body="{ data }">
+              <StatusDot
+                :color="deviceOnline(data) ? 'green' : 'red'"
+                :label="deviceOnline(data) ? 'Online' : 'Offline'"
+              />
+            </template>
+          </Column>
+          <Column field="room" header="Room" :sortable="true" class="hidden md:table-cell">
+            <template #body="{ data }">
+              <span class="text-sf-text-2">{{ data.room || '\u2014' }}</span>
+            </template>
+          </Column>
+          <Column header="" style="width: 50px" class="hidden md:table-cell">
+            <template #body="{ data }">
+              <Button icon="pi pi-pencil" text rounded size="small" @click.stop="openDeviceModal(data)" aria-label="Edit" />
+            </template>
+          </Column>
+        </DataTable>
+      </template>
+    </div>
+
+    <!-- Device detail modal -->
+    <DeviceModal
+      :device="selectedDevice"
+      v-model:visible="deviceModalVisible"
+      @updated="onDeviceUpdated"
+    />
+
+    <!-- Confirm dialog -->
+    <Dialog
+      v-model:visible="confirmDialogVisible"
+      header="Confirm Device"
+      :modal="true"
+      :style="{ width: '90vw', maxWidth: '400px' }"
+      :pt="{ root: { style: 'border-radius: 12px' } }"
+    >
+      <div class="space-y-4 py-2">
+        <div>
+          <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1">Name</label>
+          <InputText v-model="confirmName" class="w-full text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1">Room (optional)</label>
+          <InputText v-model="confirmRoom" class="w-full text-sm" placeholder="e.g. Kitchen" />
+        </div>
+        <div class="flex gap-2 pt-2">
+          <Button label="Confirm" icon="pi pi-check" @click="submitConfirm" :loading="confirmLoading" />
+          <Button label="Cancel" severity="secondary" text @click="confirmDialogVisible = false" />
+        </div>
       </div>
-
-      <button @click="sendAction" :disabled="actionDeviceId === null || !actionCapabilityKey">
-        Send Action
-      </button>
-
-      <pre v-if="actionResult">{{ actionResult }}</pre>
-      <p v-if="actionError" style="color: red;">Error: {{ actionError }}</p>
-    </section>
-
-    <!-- Read Raw DPS -->
-    <section>
-      <h2>Read Raw DPS (POST /api/devices/{'{id}'}/read)</h2>
-      <p>Poll a Tuya device locally and show raw DP IDs and their current values. Use this to verify DP mappings.</p>
-
-      <div>
-        <label>
-          Device:
-          <select v-model="readDeviceId">
-            <option :value="null" disabled>Select a device</option>
-            <option
-              v-for="device in store.devices.filter(d => d.protocol === 'tuya')"
-              :key="device.id"
-              :value="device.id"
-            >
-              {{ device.name }} (#{{ device.id }}, {{ device.ip_address || 'no IP' }})
-            </option>
-          </select>
-        </label>
-      </div>
-
-      <button @click="readRawDps" :disabled="readDeviceId === null || reading">
-        {{ reading ? 'Reading...' : 'Read DPS' }}
-      </button>
-
-      <div v-if="readResult">
-        <table>
-          <thead>
-            <tr><th>DP ID</th><th>Value</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="(val, dp) in readResult" :key="dp">
-              <td>{{ dp }}</td>
-              <td>{{ String(val) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p v-if="readError" style="color: red;">Error: {{ readError }}</p>
-    </section>
-  </div>
+    </Dialog>
+  </AppShell>
 </template>

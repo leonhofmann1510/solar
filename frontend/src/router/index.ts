@@ -9,9 +9,9 @@ const router = createRouter({
       component: () => import('@/views/DashboardView.vue'),
     },
     {
-      path: '/history',
-      name: 'history',
-      component: () => import('@/views/HistoryView.vue'),
+      path: '/devices',
+      name: 'devices',
+      component: () => import('@/views/DevicesView.vue'),
     },
     {
       path: '/rules',
@@ -19,14 +19,14 @@ const router = createRouter({
       component: () => import('@/views/RulesView.vue'),
     },
     {
-      path: '/devices',
-      name: 'devices',
-      component: () => import('@/views/DevicesView.vue'),
+      path: '/rules/new',
+      name: 'rule-create',
+      component: () => import('@/views/RuleEditView.vue'),
     },
     {
-      path: '/settings',
-      name: 'settings',
-      component: () => import('@/views/SettingsView.vue'),
+      path: '/rules/:id/edit',
+      name: 'rule-edit',
+      component: () => import('@/views/RuleEditView.vue'),
     },
   ],
 })

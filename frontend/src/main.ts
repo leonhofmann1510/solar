@@ -2,6 +2,8 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import Aura from '@primevue/themes/aura'
+import ConfirmationService from 'primevue/confirmationservice'
+import ToastService from 'primevue/toastservice'
 import 'primeicons/primeicons.css'
 import './assets/main.css'
 
@@ -17,8 +19,11 @@ app.use(PrimeVue, {
     preset: Aura,
     options: {
       darkModeSelector: false,
+      cssLayer: { name: 'primevue', order: 'tailwind-base, primevue, tailwind-utilities' },
     },
   },
 })
+app.use(ConfirmationService)
+app.use(ToastService)
 
 app.mount('#app')

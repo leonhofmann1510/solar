@@ -2,10 +2,12 @@
 import { ref, onUnmounted } from 'vue'
 import { useReadingsStore } from '@/stores/readings'
 import { useDevicesStore } from '@/stores/devices'
+import Toast from 'primevue/toast'
 
 const readingsStore = useReadingsStore()
 const devicesStore = useDevicesStore()
 
+const wsConnected = ref(false)
 let socket: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -14,7 +16,7 @@ function connect() {
   socket = new WebSocket(url)
 
   socket.onopen = () => {
-    console.log('[WS] Connected')
+    wsConnected.value = true
   }
 
   socket.onmessage = (event) => {
@@ -34,7 +36,7 @@ function connect() {
   }
 
   socket.onclose = () => {
-    console.log('[WS] Disconnected — reconnecting in 5s')
+    wsConnected.value = false
     reconnectTimer = setTimeout(connect, 5_000)
   }
 
@@ -53,5 +55,15 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- WS disconnect banner -->
+  <div
+    v-if="!wsConnected"
+    class="fixed top-0 left-0 right-0 z-50 bg-sf-amber-500 text-white text-center text-sm py-1.5 font-medium"
+  >
+    Live data disconnected — reconnecting...
+  </div>
+
+  <Toast position="top-right" />
+
   <router-view />
 </template>

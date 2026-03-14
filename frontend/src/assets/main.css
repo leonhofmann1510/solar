@@ -1,3 +1,71 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  /* Brand — Green */
+  --sf-green-50:  #f0fdf4;
+  --sf-green-100: #dcfce7;
+  --sf-green-500: #22c55e;
+  --sf-green-600: #16a34a;
+  --sf-green-700: #15803d;
+
+  /* Amber */
+  --sf-amber-400: #fbbf24;
+  --sf-amber-500: #f59e0b;
+  --sf-amber-600: #d97706;
+
+  /* Red */
+  --sf-red-500: #ef4444;
+
+  /* Neutrals */
+  --sf-bg:      #f8fafc;
+  --sf-surface: #ffffff;
+  --sf-border:  #e2e8f0;
+  --sf-text-1:  #0f172a;
+  --sf-text-2:  #475569;
+  --sf-text-3:  #94a3b8;
+
+  /* Typography */
+  --sf-font: 'DM Sans', sans-serif;
+
+  /* Spacing */
+  --sf-radius:    12px;
+  --sf-radius-sm: 8px;
+
+  /* Shadows */
+  --sf-shadow:    0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --sf-shadow-md: 0 4px 12px rgba(0,0,0,.08);
+
+  /* PrimeVue primary palette override */
+  --p-primary-50:  var(--sf-green-50);
+  --p-primary-100: var(--sf-green-100);
+  --p-primary-500: var(--sf-green-500);
+  --p-primary-600: var(--sf-green-600);
+  --p-primary-700: var(--sf-green-700);
+  --p-primary-color: var(--sf-green-500);
+  --p-primary-hover-color: var(--sf-green-600);
+}
+
+body {
+  font-family: var(--sf-font);
+  background-color: var(--sf-bg);
+  color: var(--sf-text-1);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--sf-border);
+  border-radius: 3px;
+}
