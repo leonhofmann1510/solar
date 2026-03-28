@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, reactive } from 'vue'
 import Dialog from 'primevue/dialog'
 import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 import InputText from 'primevue/inputtext'
+import InputNumber from 'primevue/inputnumber'
 import InputSwitch from 'primevue/inputswitch'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -34,6 +35,19 @@ const editEnabled = ref(true)
 const saving = ref(false)
 const testing = ref<string | null>(null)
 const testResult = ref<string | null>(null)
+const testValues = reactive<Record<string, number | string>>({})
+
+function getTestValue(capKey: string, dataType: string, minValue: number | null): number | string {
+  if (testValues[capKey] !== undefined) return testValues[capKey]
+  if (dataType === 'integer' || dataType === 'float') {
+    return minValue ?? 0
+  }
+  return ''
+}
+
+function setTestValue(capKey: string, value: number | string) {
+  testValues[capKey] = value
+}
 
 watch(() => props.device, (d) => {
   if (d) {
@@ -65,12 +79,12 @@ async function handleDelete() {
   dialogVisible.value = false
 }
 
-async function handleTestAction(capKey: string, value: boolean) {
+async function handleTestAction(capKey: string, value: boolean | number | string) {
   if (!props.device) return
   testing.value = capKey
   testResult.value = null
   try {
-    const result = await store.sendAction(props.device.id, {
+    await store.sendAction(props.device.id, {
       capability_key: capKey,
       value,
     })
@@ -210,24 +224,73 @@ const actionCapabilities = computed(() =>
           <template v-if="actionCapabilities.length > 0">
             <div class="border-t border-sf-border pt-4">
               <p class="text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-3">Test Actions</p>
-              <div v-for="cap in actionCapabilities" :key="cap.key" class="flex items-center gap-2 mb-2">
+              <div v-for="cap in actionCapabilities" :key="cap.key" class="flex items-center gap-2 mb-3">
                 <span class="text-sm text-sf-text-1 flex-1">{{ cap.display_name || cap.key }}</span>
-                <Button
-                  label="On"
-                  size="small"
-                  severity="success"
-                  outlined
-                  @click="handleTestAction(cap.key, true)"
-                  :loading="testing === cap.key"
-                />
-                <Button
-                  label="Off"
-                  size="small"
-                  severity="secondary"
-                  outlined
-                  @click="handleTestAction(cap.key, false)"
-                  :loading="testing === cap.key"
-                />
+                
+                <!-- Boolean: On/Off buttons -->
+                <template v-if="cap.data_type === 'boolean'">
+                  <Button
+                    label="On"
+                    size="small"
+                    severity="success"
+                    outlined
+                    @click="handleTestAction(cap.key, true)"
+                    :loading="testing === cap.key"
+                  />
+                  <Button
+                    label="Off"
+                    size="small"
+                    severity="secondary"
+                    outlined
+                    @click="handleTestAction(cap.key, false)"
+                    :loading="testing === cap.key"
+                  />
+                </template>
+                
+                <!-- Integer/Float: Number input with send button -->
+                <template v-else-if="cap.data_type === 'integer' || cap.data_type === 'float'">
+                  <InputNumber
+                    :modelValue="getTestValue(cap.key, cap.data_type, cap.min_value) as number"
+                    @update:modelValue="setTestValue(cap.key, $event ?? 0)"
+                    :min="cap.min_value ?? undefined"
+                    :max="cap.max_value ?? undefined"
+                    :minFractionDigits="cap.data_type === 'float' ? 1 : 0"
+                    :maxFractionDigits="cap.data_type === 'float' ? 2 : 0"
+                    showButtons
+                    buttonLayout="horizontal"
+                    :step="cap.data_type === 'float' ? 0.5 : 1"
+                    class="w-28"
+                    size="small"
+                    :pt="{ input: { class: 'text-center text-sm w-12' } }"
+                  />
+                  <span v-if="cap.unit" class="text-xs text-sf-text-3">{{ cap.unit }}</span>
+                  <Button
+                    label="Send"
+                    size="small"
+                    severity="primary"
+                    outlined
+                    @click="handleTestAction(cap.key, getTestValue(cap.key, cap.data_type, cap.min_value))"
+                    :loading="testing === cap.key"
+                  />
+                </template>
+                
+                <!-- String: Text input with send button -->
+                <template v-else>
+                  <InputText
+                    :modelValue="getTestValue(cap.key, cap.data_type, null) as string"
+                    @update:modelValue="setTestValue(cap.key, $event)"
+                    placeholder="Value"
+                    class="w-24 text-sm"
+                  />
+                  <Button
+                    label="Send"
+                    size="small"
+                    severity="primary"
+                    outlined
+                    @click="handleTestAction(cap.key, getTestValue(cap.key, cap.data_type, null))"
+                    :loading="testing === cap.key"
+                  />
+                </template>
               </div>
             </div>
           </template>
