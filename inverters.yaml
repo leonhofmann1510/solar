@@ -23,7 +23,7 @@ inverters:
     has_battery: true
     low_addr_as_holding: false  # SH10RT: all registers are input (FC4)
     registers:
-      pv_yield_today:  13002
+      pv_yield_today:  13002  # Combine with 13003 as 32-bit LE, divided by 16000
       pv_power:        null   # calculated from MPPT strings (V*A)
       grid_power:      13009
       pv_u1:           5010
@@ -36,7 +36,7 @@ inverters:
       battery_current:        13025  # battery current ×0.1 A
       battery_running_state:  13006  # 0=standby, 1=charging, 2=discharging — confirmed from register dump
       grid_buy_today:  13035
-      feed_in_today:   13044
+      feed_in_today:   13039
       inverter_temp:   13008
       grid_frequency:  null
 

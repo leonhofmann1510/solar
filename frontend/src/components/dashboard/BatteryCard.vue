@@ -47,8 +47,8 @@ const powerLabel = computed(() => {
         style="height: 6px; border-radius: 3px;"
         :pt="{ value: { style: { background: progressColor, borderRadius: '3px' } } }"
       />
-      <p v-if="power != null" class="text-xs text-sf-text-3 mt-1.5">
-        {{ Math.abs(power ?? 0).toFixed(0) }} W · {{ powerLabel }}
+      <p v-if="powerLabel != null" class="text-xs text-sf-text-3 mt-1.5">
+        {{ powerLabel }}
       </p>
     </div>
   </StatCard>

@@ -248,15 +248,44 @@ class SungrowModbus:
         return input_map, holding_map
 
     @staticmethod
-    def _get(reg_map: dict[int, int], address: int | None, *, signed: bool = False) -> float | None:
-        """Look up an address in a register map and return the scaled value."""
+    def _get(reg_map: dict[int, int], address: int | None, *, signed: bool = False, scale_div: float = 10.0) -> float | None:
+        """Look up an address in a register map and return the scaled value.
+        
+        Args:
+            reg_map: The register value map.
+            address: Absolute register address (None → returns None).
+            signed: Treat as signed 16-bit integer (two's complement).
+            scale_div: Divisor for scaling (10.0 for most values, 100.0 for energy counters, etc.).
+        """
         if address is None:
             return None
         raw = reg_map.get(address)
         if raw is None:
             return None
         val = _signed(raw) if signed else raw
-        return val / 10.0
+        return val / scale_div
+
+    @staticmethod
+    def _get_32bit_le(reg_map: dict[int, int], address: int | None, *, scale_div: float = 10.0) -> float | None:
+        """Look up a 32-bit little-endian value from two consecutive 16-bit registers.
+        
+        For energy counters in Sungrow: address points to the LOW word, address+1 is the HIGH word.
+        Combined as 32-bit LE: (high << 16) | low
+        
+        Args:
+            reg_map: The register value map.
+            address: Absolute register address for LOW word (None → returns None).
+            scale_div: Divisor for scaling (e.g., 16000 for 0.0001 kWh units).
+        """
+        if address is None:
+            return None
+        low = reg_map.get(address)
+        high = reg_map.get(address + 1)
+        if low is None or high is None:
+            return None
+        # Combine as 32-bit little-endian
+        val_32bit = (high << 16) | low
+        return val_32bit / scale_div
 
     @staticmethod
     def _battery_power(reg_map: dict[int, int], r: RegisterMap) -> float | None:
@@ -322,6 +351,13 @@ class SungrowModbus:
             pv_string1_w = round(u_pv1 * i_pv1, 1)
             pv_string2_w = round(u_pv2 * i_pv2, 1)
 
+            # For SH10RT (inv1): yield is 32-bit LE at 13002:13003 ÷16000
+            # For SG12RT (inv2): yield is 16-bit at 5002 ÷10
+            if self.inverter_id == "inv1":
+                yield_kwh = self._get_32bit_le(inp, r.pv_yield_today, scale_div=16000.0) or 0.0
+            else:
+                yield_kwh = self._get(inp, r.pv_yield_today) or 0.0
+
             data = InverterData(
                 inverter_id=self.inverter_id,
                 timestamp=datetime.now(UTC),
@@ -332,7 +368,7 @@ class SungrowModbus:
                 battery_power_w=self._battery_power(reg, r),
                 battery_running_state=reg.get(r.battery_running_state) if r.battery_running_state is not None else None,
                 grid_power_w=self._get(inp, r.grid_power, signed=True),
-                pv_yield_today_kwh=self._get(inp, r.pv_yield_today) or 0.0,
+                pv_yield_today_kwh=yield_kwh,
                 feed_in_today_kwh=self._get(inp, r.feed_in_today),
                 grid_buy_today_kwh=self._get(inp, r.grid_buy_today),
                 inverter_temp_c=self._get(reg, r.inverter_temp) or 0.0,

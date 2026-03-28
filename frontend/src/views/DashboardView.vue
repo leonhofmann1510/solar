@@ -46,14 +46,13 @@ const gridPowerW = computed(() => readingsStore.inv1?.grid_power_w ?? null)
 const batterySoc = computed(() => readingsStore.inv1?.battery_soc_pct ?? null)
 const batteryPower = computed(() => readingsStore.inv1?.battery_power_w ?? null)
 const batteryRunningState = computed(() => {
-  console.log("State", readingsStore.inv1?.battery_running_state)
   return readingsStore.inv1?.battery_running_state ?? null
 })
 
 
 const yieldToday = computed(() => {
-  if (readingsStore.inv1?.pv_yield_today_kwh == null || readingsStore.inv2?.pv_yield_today_kwh == null) return null
-  return Math.max(0, readingsStore.inv1.pv_yield_today_kwh + readingsStore.inv2.pv_yield_today_kwh)
+  if (readingsStore.inv1?.pv_yield_today_kwh == null) return null
+  return Math.max(0, readingsStore.inv1.pv_yield_today_kwh)
 })
 const feedInToday = computed(() => readingsStore.inv1?.feed_in_today_kwh ?? null)
 const gridBuyToday = computed(() => readingsStore.inv1?.grid_buy_today_kwh ?? null)
@@ -88,7 +87,7 @@ const idleRules = computed(() =>
     </div>
 
     <SectionHeader title="Solar System" />
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
       <StatCard
         label="PV Power"
         :value="totalCurrentPower != null ? totalCurrentPower.toFixed(1) : null"
@@ -147,7 +146,6 @@ const idleRules = computed(() =>
         </div>
         <template v-if="readingsStore.inv1">
           <div class="flex items-center gap-4 text-xs text-sf-text-2">
-            <span>Temp: {{ readingsStore.inv1.inverter_temp_c }}°C</span>
             <span>PV: {{ (readingsStore.inv1.pv_power_w / 1000).toFixed(1) }} kW</span>
           </div>
         </template>
@@ -161,7 +159,6 @@ const idleRules = computed(() =>
         </div>
         <template v-if="readingsStore.inv2">
           <div class="flex items-center gap-4 text-xs text-sf-text-2">
-            <span>Temp: {{ readingsStore.inv2.inverter_temp_c }}°C</span>
             <span>PV: {{ (readingsStore.inv2.pv_power_w / 1000).toFixed(1) }} kW</span>
           </div>
         </template>
