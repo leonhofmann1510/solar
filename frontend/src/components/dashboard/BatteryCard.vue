@@ -6,6 +6,7 @@ import ProgressBar from 'primevue/progressbar'
 const props = defineProps<{
   soc: number | null
   power: number | null
+  runningState: number | null
   loading?: boolean
 }>()
 
@@ -24,9 +25,8 @@ const progressColor = computed(() => {
 })
 
 const powerLabel = computed(() => {
-  if (props.power == null) return ''
-  if (props.power > 0) return 'Charging'
-  if (props.power < 0) return 'Discharging'
+  if (props.runningState === 1) return 'Charging'
+  if (props.runningState === 2) return 'Discharging'
   return 'Idle'
 })
 </script>
@@ -48,7 +48,7 @@ const powerLabel = computed(() => {
         :pt="{ value: { style: { background: progressColor, borderRadius: '3px' } } }"
       />
       <p v-if="power != null" class="text-xs text-sf-text-3 mt-1.5">
-        {{ Math.abs(power) }} W {{ powerLabel }}
+        {{ Math.abs(power ?? 0).toFixed(0) }} W · {{ powerLabel }}
       </p>
     </div>
   </StatCard>

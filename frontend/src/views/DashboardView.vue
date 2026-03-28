@@ -45,18 +45,25 @@ const loading = computed(() => !readingsStore.inv1 && !readingsStore.inv2)
 const gridPowerW = computed(() => readingsStore.inv1?.grid_power_w ?? null)
 const batterySoc = computed(() => readingsStore.inv1?.battery_soc_pct ?? null)
 const batteryPower = computed(() => readingsStore.inv1?.battery_power_w ?? null)
-const houseLoad = computed(() => readingsStore.inv1?.house_load_w ?? null)
+const batteryRunningState = computed(() => {
+  console.log("State", readingsStore.inv1?.battery_running_state)
+  return readingsStore.inv1?.battery_running_state ?? null
+})
+
 
 const yieldToday = computed(() => {
   if (readingsStore.inv1?.pv_yield_today_kwh == null || readingsStore.inv2?.pv_yield_today_kwh == null) return null
-  console.log(readingsStore.inv2?.pv_yield_today_kwh)
-  return Math.max(0, readingsStore.inv1?.pv_yield_today_kwh+readingsStore.inv2?.pv_yield_today_kwh)
+  return Math.max(0, readingsStore.inv1.pv_yield_today_kwh + readingsStore.inv2.pv_yield_today_kwh)
 })
 const feedInToday = computed(() => readingsStore.inv1?.feed_in_today_kwh ?? null)
 const gridBuyToday = computed(() => readingsStore.inv1?.grid_buy_today_kwh ?? null)
 const selfConsumption = computed(() => {
   if (yieldToday.value == null || feedInToday.value == null) return null
   return Math.max(0, yieldToday.value - feedInToday.value)
+})
+const totalCurrentPower = computed(() => {
+  if (readingsStore.inv1?.pv_power_w == null || readingsStore.inv2?.pv_power_w == null) return null
+  return Math.max(0, (readingsStore.inv1.pv_power_w + readingsStore.inv2.pv_power_w) / 1000)
 })
 
 const inv1Online = computed(() => readingsStore.inv1 != null)
@@ -84,22 +91,15 @@ const idleRules = computed(() =>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
       <StatCard
         label="PV Power"
-        :value="readingsStore.inv1?.pv_power_w"
+        :value="totalCurrentPower != null ? totalCurrentPower.toFixed(1) : null"
         unit="kW"
         icon="pi pi-sun"
         color="green"
         :loading="loading"
       />
       <GridPowerCard :gridPowerW="gridPowerW" :loading="loading" />
-      <BatteryCard :soc="batterySoc" :power="batteryPower" :loading="loading" />
-      <StatCard
-        label="House Load"
-        :value="houseLoad != null ? houseLoad : null"
-        unit="W"
-        icon="pi pi-home"
-        color="neutral"
-        :loading="loading"
-      />
+      <BatteryCard :soc="batterySoc" :power="batteryPower" :runningState="batteryRunningState" :loading="loading" />
+
     </div>
 
     <SectionHeader title="Today" />

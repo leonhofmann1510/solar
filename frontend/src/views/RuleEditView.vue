@@ -54,7 +54,6 @@ const inverterFields = [
   'battery_soc_pct',
   'battery_power_w',
   'grid_power_w',
-  'house_load_w',
   'pv_yield_today_kwh',
   'feed_in_today_kwh',
   'grid_buy_today_kwh',

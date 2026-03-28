@@ -7,8 +7,8 @@ export interface InverterReading {
   pv_string2_w: number
   battery_soc_pct: number | null
   battery_power_w: number | null
+  battery_running_state: number | null
   grid_power_w: number
-  house_load_w: number
   pv_yield_today_kwh: number
   feed_in_today_kwh: number
   grid_buy_today_kwh: number

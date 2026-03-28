@@ -42,7 +42,7 @@ Every 30 seconds, SolarFlow polls both inverters, stores the readings, evaluates
 
 ### 📊 Data Collection
 - Polls two Sungrow inverters via Modbus TCP (hybrid with battery + string-only)
-- Tracks PV power, battery SOC, grid import/export, house load, daily yields, and more
+- Tracks PV power, battery SOC, grid import/export, daily yields, and more
 - Stores all readings with UTC timestamps in PostgreSQL
 
 ### ⚡ Rules Engine

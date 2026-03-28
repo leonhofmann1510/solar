@@ -9,11 +9,11 @@ const props = defineProps<{
 
 const display = computed(() => {
   if (props.gridPowerW == null) return { value: null, label: '', color: 'neutral' as const, arrow: '' }
-  const absKw = (Math.abs(props.gridPowerW) / 1000).toFixed(1)
+  const absKw = (Math.abs(props.gridPowerW) / 100).toFixed(1)
   if (props.gridPowerW > 50) {
     return { value: absKw, label: 'exporting', color: 'green' as const, arrow: '\u2191' }
   }
-  if (props.gridPowerW < -50) {
+  if (props.gridPowerW < 50) {
     return { value: absKw, label: 'importing', color: 'amber' as const, arrow: '\u2193' }
   }
   return { value: '0.0', label: 'balanced', color: 'neutral' as const, arrow: '\u2014' }
