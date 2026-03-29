@@ -8,10 +8,22 @@ export interface Condition {
   value: number
 }
 
-export interface Action {
+// MQTT-based action (raw topic/payload)
+export interface MqttAction {
+  type: 'mqtt'
   mqtt_topic: string
   mqtt_payload: string
 }
+
+// Device-based action (works with any protocol: Tuya, MQTT devices, etc.)
+export interface DeviceAction {
+  type: 'device'
+  device_id: number
+  capability_key: string
+  value: boolean | number | string
+}
+
+export type Action = MqttAction | DeviceAction
 
 export interface Rule {
   id: number

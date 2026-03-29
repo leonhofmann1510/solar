@@ -46,8 +46,17 @@ class ConditionSchema(BaseModel):
 
 
 class ActionSchema(BaseModel):
-    mqtt_topic: str
-    mqtt_payload: str
+    # Action type: 'mqtt' for raw MQTT, 'device' for device-based
+    type: str = "mqtt"
+
+    # For MQTT actions
+    mqtt_topic: str | None = None
+    mqtt_payload: str | None = None
+
+    # For device actions (works with any protocol: Tuya, MQTT devices, etc.)
+    device_id: int | None = None
+    capability_key: str | None = None
+    value: bool | int | float | str | None = None
 
 
 class RuleCreate(BaseModel):

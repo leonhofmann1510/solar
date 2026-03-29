@@ -9,7 +9,8 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
-import type { Operator, ConditionLogic, OnClearAction } from '@/types/rule'
+import InputSwitch from 'primevue/inputswitch'
+import type { Operator, ConditionLogic, OnClearAction, Action } from '@/types/rule'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,7 +30,7 @@ const conditionLogic = ref<ConditionLogic>('AND')
 const cooldownSeconds = ref(300)
 const onClearAction = ref<OnClearAction>('none')
 const conditions = ref<{ field: string; operator: Operator; value: number }[]>([])
-const actions = ref<{ mqtt_topic: string; mqtt_payload: string }[]>([])
+const actions = ref<Action[]>([])
 
 const steps = ['Name & Logic', 'Conditions', 'Actions', 'Review']
 
@@ -65,6 +66,40 @@ const fieldOptions = computed(() =>
   inverterFields.map((f) => ({ label: f, value: f }))
 )
 
+// Devices that are confirmed and enabled
+const enabledDevices = computed(() =>
+  devicesStore.devices.filter((d) => d.confirmed && d.enabled)
+)
+
+// Device options for the selector
+const deviceOptions = computed(() =>
+  enabledDevices.value.map((d) => ({
+    label: `${d.name} (${d.protocol})`,
+    value: d.id,
+  }))
+)
+
+// Get capabilities for a specific device (only actionable capabilities)
+function getDeviceCapabilities(deviceId: number) {
+  const device = devicesStore.devices.find((d) => d.id === deviceId)
+  if (!device) return []
+  return device.capabilities
+    .filter((c) => c.capability_type === 'action' || c.capability_type === 'both')
+    .map((c) => ({
+      label: c.display_name,
+      value: c.key,
+      dataType: c.data_type,
+    }))
+}
+
+// Get capability info for value input rendering
+function getCapabilityDataType(deviceId: number, capabilityKey: string): string {
+  const device = devicesStore.devices.find((d) => d.id === deviceId)
+  if (!device) return 'boolean'
+  const cap = device.capabilities.find((c) => c.key === capabilityKey)
+  return cap?.data_type ?? 'boolean'
+}
+
 onMounted(async () => {
   await devicesStore.fetchAll()
 
@@ -77,7 +112,19 @@ onMounted(async () => {
       cooldownSeconds.value = rule.cooldown_seconds
       onClearAction.value = rule.on_clear_action
       conditions.value = [...rule.conditions]
-      actions.value = [...rule.actions]
+      // Migrate old actions that don't have a type field
+      actions.value = rule.actions.map((a: any) => {
+        if (a.type) return a
+        // Legacy MQTT action without type field
+        if (a.mqtt_topic) {
+          return { type: 'mqtt' as const, mqtt_topic: a.mqtt_topic, mqtt_payload: a.mqtt_payload || '' }
+        }
+        // Legacy device action without type field
+        if (a.device_id !== undefined) {
+          return { type: 'device' as const, device_id: a.device_id, capability_key: a.capability_key, value: a.value }
+        }
+        return a
+      })
     } finally {
       loading.value = false
     }
@@ -92,8 +139,38 @@ function removeCondition(idx: number) {
   conditions.value.splice(idx, 1)
 }
 
-function addAction() {
-  actions.value.push({ mqtt_topic: '', mqtt_payload: '' })
+function addMqttAction() {
+  actions.value.push({ type: 'mqtt', mqtt_topic: '', mqtt_payload: '' })
+}
+
+function addDeviceAction() {
+  const firstDevice = enabledDevices.value[0]
+  if (!firstDevice) return
+  const firstCap = getDeviceCapabilities(firstDevice.id)[0]
+  actions.value.push({
+    type: 'device',
+    device_id: firstDevice.id,
+    capability_key: firstCap?.value ?? '',
+    value: firstCap?.dataType === 'boolean' ? true : 0,
+  })
+}
+
+function onDeviceChange(action: Action, deviceId: number) {
+  if (action.type !== 'device') return
+  action.device_id = deviceId
+  const caps = getDeviceCapabilities(deviceId)
+  const firstCap = caps[0]
+  if (firstCap) {
+    action.capability_key = firstCap.value ?? ''
+    action.value = firstCap.dataType === 'boolean' ? true : 0
+  }
+}
+
+function onCapabilityChange(action: Action, capKey: string) {
+  if (action.type !== 'device') return
+  action.capability_key = capKey
+  const dataType = getCapabilityDataType(action.device_id, capKey)
+  action.value = dataType === 'boolean' ? true : 0
 }
 
 function removeAction(idx: number) {
@@ -110,6 +187,18 @@ function prevStep() {
 
 function operatorLabel(op: Operator): string {
   return operatorOptions.find((o) => o.value === op)?.label ?? op
+}
+
+function getDeviceName(deviceId: number): string {
+  const device = devicesStore.devices.find((d) => d.id === deviceId)
+  return device?.name ?? `Device ${deviceId}`
+}
+
+function getCapabilityName(deviceId: number, capKey: string): string {
+  const device = devicesStore.devices.find((d) => d.id === deviceId)
+  if (!device) return capKey
+  const cap = device.capabilities.find((c) => c.key === capKey)
+  return cap?.display_name ?? capKey
 }
 
 async function handleSave() {
@@ -139,7 +228,14 @@ async function handleSave() {
 
 const canProceedStep0 = computed(() => ruleName.value.trim().length > 0)
 const canProceedStep1 = computed(() => conditions.value.length > 0)
-const canProceedStep2 = computed(() => actions.value.length > 0 && actions.value.every((a) => a.mqtt_topic.trim()))
+const canProceedStep2 = computed(() => {
+  if (actions.value.length === 0) return false
+  return actions.value.every((a) => {
+    if (a.type === 'mqtt') return a.mqtt_topic.trim().length > 0
+    if (a.type === 'device') return a.device_id > 0 && a.capability_key.length > 0
+    return false
+  })
+})
 </script>
 
 <template>
@@ -250,20 +346,108 @@ const canProceedStep2 = computed(() => actions.value.length > 0 && actions.value
           <div
             v-for="(action, idx) in actions"
             :key="idx"
-            class="flex items-end gap-2 p-3 bg-slate-50 rounded-sf-sm"
+            class="p-3 bg-slate-50 rounded-sf-sm space-y-3"
           >
-            <div class="flex-1 min-w-0">
-              <label class="block text-[10px] text-sf-text-3 mb-0.5">MQTT Topic</label>
-              <InputText v-model="action.mqtt_topic" class="w-full text-sm" placeholder="e.g. shellies/shelly1/relay/0/command" />
+            <!-- Action type indicator -->
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium text-sf-text-2 uppercase">
+                {{ action.type === 'mqtt' ? 'MQTT Action' : 'Device Action' }}
+              </span>
+              <Button icon="pi pi-times" text rounded severity="danger" size="small" @click="removeAction(idx)" aria-label="Remove" />
             </div>
-            <div class="flex-1 min-w-0">
-              <label class="block text-[10px] text-sf-text-3 mb-0.5">Payload</label>
-              <InputText v-model="action.mqtt_payload" class="w-full text-sm" placeholder="e.g. on" />
-            </div>
-            <Button icon="pi pi-times" text rounded severity="danger" size="small" @click="removeAction(idx)" aria-label="Remove" />
+
+            <!-- MQTT Action -->
+            <template v-if="action.type === 'mqtt'">
+              <div class="flex items-end gap-2">
+                <div class="flex-1 min-w-0">
+                  <label class="block text-[10px] text-sf-text-3 mb-0.5">MQTT Topic</label>
+                  <InputText v-model="action.mqtt_topic" class="w-full text-sm" placeholder="e.g. shellies/shelly1/relay/0/command" />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <label class="block text-[10px] text-sf-text-3 mb-0.5">Payload</label>
+                  <InputText v-model="action.mqtt_payload" class="w-full text-sm" placeholder="e.g. on" />
+                </div>
+              </div>
+            </template>
+
+            <!-- Device Action -->
+            <template v-else-if="action.type === 'device'">
+              <div class="flex flex-wrap items-end gap-2">
+                <div class="flex-1 min-w-[150px]">
+                  <label class="block text-[10px] text-sf-text-3 mb-0.5">Device</label>
+                  <Select
+                    :modelValue="action.device_id"
+                    @update:modelValue="onDeviceChange(action, $event)"
+                    :options="deviceOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    class="w-full text-sm"
+                    placeholder="Select device"
+                  />
+                </div>
+                <div class="flex-1 min-w-[120px]">
+                  <label class="block text-[10px] text-sf-text-3 mb-0.5">Capability</label>
+                  <Select
+                    :modelValue="action.capability_key"
+                    @update:modelValue="onCapabilityChange(action, $event)"
+                    :options="getDeviceCapabilities(action.device_id)"
+                    optionLabel="label"
+                    optionValue="value"
+                    class="w-full text-sm"
+                    placeholder="Select capability"
+                  />
+                </div>
+                <div class="w-28">
+                  <label class="block text-[10px] text-sf-text-3 mb-0.5">Value</label>
+                  <!-- Boolean: switch -->
+                  <InputSwitch
+                    v-if="getCapabilityDataType(action.device_id, action.capability_key) === 'boolean'"
+                    :modelValue="!!action.value"
+                    @update:modelValue="action.value = $event"
+                  />
+                  <!-- Numeric: number input -->
+                  <InputNumber
+                    v-else-if="['integer', 'float'].includes(getCapabilityDataType(action.device_id, action.capability_key))"
+                    :modelValue="Number(action.value)"
+                    @update:modelValue="action.value = $event ?? 0"
+                    class="w-full text-sm"
+                  />
+                  <!-- String: text input -->
+                  <InputText
+                    v-else
+                    :modelValue="String(action.value)"
+                    @update:modelValue="action.value = $event ?? ''"
+                    class="w-full text-sm"
+                  />
+                </div>
+              </div>
+            </template>
           </div>
 
-          <Button label="Add Action" icon="pi pi-plus" text size="small" @click="addAction" />
+          <!-- Add action buttons -->
+          <div class="flex gap-2 flex-wrap">
+            <Button
+              label="Add Device Action"
+              icon="pi pi-plus"
+              text
+              size="small"
+              @click="addDeviceAction"
+              :disabled="enabledDevices.length === 0"
+            />
+            <Button
+              label="Add MQTT Action"
+              icon="pi pi-plus"
+              text
+              size="small"
+              severity="secondary"
+              @click="addMqttAction"
+            />
+          </div>
+
+          <p v-if="enabledDevices.length === 0" class="text-xs text-amber-600">
+            <i class="pi pi-info-circle mr-1" />
+            No devices available. Add devices in the Devices section first.
+          </p>
         </div>
 
         <!-- Step 4: Review -->
@@ -297,9 +481,19 @@ const canProceedStep2 = computed(() => actions.value.length > 0 && actions.value
             <p class="text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-2">Actions</p>
             <div v-for="(action, idx) in actions" :key="idx" class="flex items-center gap-2 text-sm text-sf-text-1 mb-1">
               <i class="pi pi-arrow-right text-sf-green-500 text-xs" />
-              <span class="font-mono text-xs">{{ action.mqtt_topic }}</span>
-              <span class="text-sf-text-3">=</span>
-              <span class="font-mono text-xs">{{ action.mqtt_payload }}</span>
+              <template v-if="action.type === 'mqtt'">
+                <span class="text-xs text-sf-text-3">MQTT:</span>
+                <span class="font-mono text-xs">{{ action.mqtt_topic }}</span>
+                <span class="text-sf-text-3">=</span>
+                <span class="font-mono text-xs">{{ action.mqtt_payload }}</span>
+              </template>
+              <template v-else-if="action.type === 'device'">
+                <span class="font-medium">{{ getDeviceName(action.device_id) }}</span>
+                <span class="text-sf-text-3">→</span>
+                <span>{{ getCapabilityName(action.device_id, action.capability_key) }}</span>
+                <span class="text-sf-text-3">=</span>
+                <span class="font-mono text-xs">{{ action.value }}</span>
+              </template>
             </div>
           </div>
 

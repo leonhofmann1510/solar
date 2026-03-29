@@ -111,7 +111,10 @@ async def _fire_action(
     action_label: str,
 ) -> None:
     """Fire a single action — supports both MQTT-topic and device-based actions."""
-    if "device_id" in action and "capability_key" in action:
+    action_type = action.get("type", "mqtt")  # Default to mqtt for backwards compatibility
+
+    # Device-based action (works with any protocol: Tuya, MQTT devices, etc.)
+    if action_type == "device" or ("device_id" in action and "capability_key" in action):
         success = await execute_action(
             session, mqtt_client,
             action["device_id"], action["capability_key"], action["value"],
@@ -123,15 +126,20 @@ async def _fire_action(
                 mqtt_topic=f"device:{action['device_id']}:{action['capability_key']}",
                 mqtt_payload=str(action["value"]),
             ))
-    elif "mqtt_topic" in action:
+
+    # Raw MQTT action
+    elif action_type == "mqtt" or "mqtt_topic" in action:
+        topic = action.get("mqtt_topic", "")
+        if not topic:
+            return
         payload = action.get("mqtt_payload", "")
         if action_label == "reverse":
             payload = _reverse_payload(payload)
-        mqtt_client.publish(action["mqtt_topic"], payload)
+        mqtt_client.publish(topic, payload)
         session.add(RuleEvent(
             rule_id=rule_id,
             action_taken=action_label,
-            mqtt_topic=action["mqtt_topic"],
+            mqtt_topic=topic,
             mqtt_payload=payload,
         ))
 
