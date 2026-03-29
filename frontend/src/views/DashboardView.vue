@@ -52,7 +52,8 @@ const batteryRunningState = computed(() => {
 
 const yieldToday = computed(() => {
   if (readingsStore.inv1?.pv_yield_today_kwh == null) return null
-  return Math.max(0, readingsStore.inv1.pv_yield_today_kwh)
+  const inv2Yield = readingsStore.inv2?.pv_yield_today_kwh ?? 0
+  return Math.max(0, readingsStore.inv1.pv_yield_today_kwh + inv2Yield)
 })
 const feedInToday = computed(() => readingsStore.inv1?.feed_in_today_kwh ?? null)
 const gridBuyToday = computed(() => readingsStore.inv1?.grid_buy_today_kwh ?? null)

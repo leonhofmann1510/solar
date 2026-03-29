@@ -351,12 +351,7 @@ class SungrowModbus:
             pv_string1_w = round(u_pv1 * i_pv1, 1)
             pv_string2_w = round(u_pv2 * i_pv2, 1)
 
-            # For SH10RT (inv1): yield is 32-bit LE at 13002:13003 ÷16000
-            # For SG12RT (inv2): yield is 16-bit at 5002 ÷10
-            if self.inverter_id == "inv1":
-                yield_kwh = self._get_32bit_le(inp, r.pv_yield_today, scale_div=16000.0) or 0.0
-            else:
-                yield_kwh = self._get(inp, r.pv_yield_today) or 0.0
+            yield_kwh = self._get(inp, r.pv_yield_today) or 0.0
 
             data = InverterData(
                 inverter_id=self.inverter_id,
