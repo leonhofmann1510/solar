@@ -6,6 +6,7 @@ Create Date: 2026-03-14
 """
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "004"
@@ -15,8 +16,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.alter_column("meter_readings", "consumption_w", new_column_name="consumption_kwh")
-    op.alter_column("meter_readings", "feed_in_w", new_column_name="feed_in_kwh")
+    conn = op.get_bind()
+    cols = {
+        row[0]
+        for row in conn.execute(
+            sa.text(
+                "SELECT column_name FROM information_schema.columns"
+                " WHERE table_name='meter_readings'"
+            )
+        )
+    }
+    if "consumption_w" in cols:
+        op.alter_column("meter_readings", "consumption_w", new_column_name="consumption_kwh")
+        op.alter_column("meter_readings", "feed_in_w", new_column_name="feed_in_kwh")
 
 
 def downgrade() -> None:
