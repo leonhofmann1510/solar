@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import UTC, datetime
 
@@ -8,18 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models import Device, DeviceCapability, DeviceState
-from app.services.mqtt import MQTTClient
+from app.state import AppState, TopicMapEntry
 
 logger = logging.getLogger(__name__)
 
-# topic -> (device_id, capability_key, data_type)
-_topic_map: dict[str, tuple[int, str, str]] = {}
 
-
-async def build_topic_map() -> dict[str, tuple[int, str, str]]:
-    """Load all MQTT state topics from confirmed devices into a lookup dict."""
-    global _topic_map
-    _topic_map = {}
+async def build_topic_map(state: AppState) -> None:
+    """Load all MQTT state topics from confirmed devices into the app state."""
+    state.topic_map.clear()
 
     async with async_session() as session:
         result = await session.execute(
@@ -32,34 +27,37 @@ async def build_topic_map() -> dict[str, tuple[int, str, str]]:
             )
         )
         for cap in result.scalars().all():
-            _topic_map[cap.mqtt_state_topic] = (cap.device_id, cap.key, cap.data_type)
+            state.topic_map[cap.mqtt_state_topic] = TopicMapEntry(
+                device_id=cap.device_id,
+                capability_key=cap.key,
+                data_type=cap.data_type,
+            )
 
-    logger.info("MQTT topic map built: %d topics", len(_topic_map))
-    return _topic_map
+    logger.info("MQTT topic map built: %d topics", len(state.topic_map))
 
 
-def subscribe_state_topics(mqtt_client: MQTTClient) -> None:
+def subscribe_state_topics(state: AppState) -> None:
     """Subscribe to all known MQTT state topics."""
-    for topic in _topic_map:
-        mqtt_client.subscribe(topic)
-    logger.info("Subscribed to %d MQTT state topics", len(_topic_map))
+    if not state.mqtt_client:
+        return
+    for topic in state.topic_map:
+        state.mqtt_client.subscribe(topic)
+    logger.info("Subscribed to %d MQTT state topics", len(state.topic_map))
 
 
-async def handle_state_message(topic: str, payload: str, ws_manager: object | None = None) -> None:
+async def handle_state_message(topic: str, payload: str, state: AppState) -> None:
     """Called when an MQTT message arrives on a subscribed state topic."""
-    entry = _topic_map.get(topic)
+    entry = state.topic_map.get(topic)
     if not entry:
         return
-
-    device_id, capability_key, data_type = entry
 
     value_boolean = None
     value_numeric = None
     value_string = None
 
-    if data_type == "boolean":
+    if entry.data_type == "boolean":
         value_boolean = payload.lower() in ("on", "1", "true")
-    elif data_type in ("integer", "float"):
+    elif entry.data_type in ("integer", "float"):
         try:
             value_numeric = float(payload)
         except ValueError:
@@ -70,8 +68,8 @@ async def handle_state_message(topic: str, payload: str, ws_manager: object | No
 
     async with async_session() as session:
         stmt = pg_insert(DeviceState).values(
-            device_id=device_id,
-            capability_key=capability_key,
+            device_id=entry.device_id,
+            capability_key=entry.capability_key,
             value_boolean=value_boolean,
             value_numeric=value_numeric,
             value_string=value_string,
@@ -88,18 +86,18 @@ async def handle_state_message(topic: str, payload: str, ws_manager: object | No
         await session.execute(stmt)
         await session.commit()
 
-    if ws_manager:
+    if state.ws_manager:
         value = value_boolean if value_boolean is not None else (value_numeric if value_numeric is not None else value_string)
-        await ws_manager.broadcast({
+        await state.ws_manager.broadcast({
             "event": "device_state_changed",
-            "device_id": device_id,
-            "capability_key": capability_key,
+            "device_id": entry.device_id,
+            "capability_key": entry.capability_key,
             "value": value,
         })
 
 
 async def publish_command(
-    mqtt_client: MQTTClient,
+    mqtt_client: object,
     session: AsyncSession,
     device_id: int,
     capability_key: str,

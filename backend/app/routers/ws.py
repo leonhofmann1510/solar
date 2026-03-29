@@ -19,7 +19,8 @@ class ConnectionManager:
         logger.info("WS client connected (%d total)", len(self.active))
 
     def disconnect(self, ws: WebSocket) -> None:
-        self.active.remove(ws)
+        if ws in self.active:
+            self.active.remove(ws)
         logger.info("WS client disconnected (%d remaining)", len(self.active))
 
     async def broadcast(self, data: dict) -> None:
@@ -30,17 +31,17 @@ class ConnectionManager:
             except Exception:
                 dead.append(ws)
         for ws in dead:
-            self.active.remove(ws)
-
-
-manager = ConnectionManager()
+            if ws in self.active:
+                self.active.remove(ws)
 
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
-    await manager.connect(websocket)
+    # Get the ws_manager from app state
+    ws_manager = websocket.app.state.app_state.ws_manager
+    await ws_manager.connect(websocket)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        ws_manager.disconnect(websocket)

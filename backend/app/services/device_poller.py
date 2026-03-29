@@ -28,7 +28,11 @@ async def poll_device_states(ws_manager=None) -> None:
                 devices = result.scalars().all()
 
                 for device in devices:
-                    dps = await tuya_protocol.read_state(device)
+                    try:
+                        dps = await tuya_protocol.read_state(device)
+                    except Exception:
+                        logger.exception("Failed to read state for Tuya device %d (%s)", device.id, device.name)
+                        continue
                     if not dps:
                         continue
 

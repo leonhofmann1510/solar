@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from app.config import settings
+from app.crypto import encrypt_value
 from app.database import async_session
 from app.models import Device, DeviceCapability
 
@@ -190,7 +191,7 @@ async def _fetch_and_save_devices(user_code: str, login_info: dict) -> int:
 
             if existing:
                 # Update key and IP in case they changed
-                existing.tuya_local_key = dev.local_key
+                existing.tuya_local_key = encrypt_value(dev.local_key) if dev.local_key else None
                 existing.ip_address = dev.ip or existing.ip_address
                 existing.last_seen_at = datetime.utcnow()
 
@@ -222,7 +223,7 @@ async def _fetch_and_save_devices(user_code: str, login_info: dict) -> int:
                 protocol="tuya",
                 raw_id=dev.id,
                 ip_address=dev.ip or None,
-                tuya_local_key=dev.local_key,
+                tuya_local_key=encrypt_value(dev.local_key) if dev.local_key else None,
                 confirmed=False,
                 meta={
                     "product_id": dev.product_id,

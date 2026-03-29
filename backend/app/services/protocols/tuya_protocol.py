@@ -4,6 +4,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.crypto import decrypt_value
 from app.models import Device, DeviceCapability
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,11 @@ def _get_tuya_device(device: Device):
         logger.warning("Tuya device %d missing ip_address or local_key", device.id)
         return None
 
+    local_key = decrypt_value(device.tuya_local_key)
+    if not local_key:
+        logger.error("Tuya device %d: failed to decrypt local_key", device.id)
+        return None
+
     # Use actual version from scan results (stored in meta during network scan).
     # Devices running firmware 3.4+ will silently ignore a 3.3 command.
     version = float((device.meta or {}).get("tuya_version", "3.3"))
@@ -28,7 +34,7 @@ def _get_tuya_device(device: Device):
     d = tinytuya.OutletDevice(
         dev_id=device.raw_id,
         address=device.ip_address,
-        local_key=device.tuya_local_key,
+        local_key=local_key,
         version=version,
     )
     d.set_socketPersistent(False)

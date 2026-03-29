@@ -17,20 +17,11 @@ from app.schemas import (
     DeviceUpdate,
     TuyaLoginStart,
 )
+from app.state import AppState, get_app_state
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
-
-# These are injected by main.py at startup
-_mqtt_client = None
-_ws_manager = None
-
-
-def set_dependencies(mqtt_client, ws_manager) -> None:
-    global _mqtt_client, _ws_manager
-    _mqtt_client = mqtt_client
-    _ws_manager = ws_manager
 
 
 # --- Discovery ---
@@ -123,6 +114,7 @@ async def confirm_device(
     device_id: int,
     body: DeviceConfirm,
     session: AsyncSession = Depends(get_session),
+    state: AppState = Depends(get_app_state),
 ):
     result = await session.execute(
         select(Device)
@@ -140,10 +132,10 @@ async def confirm_device(
     await session.refresh(device)
 
     # Rebuild MQTT topic map after confirming an MQTT device
-    if device.protocol == "mqtt" and _mqtt_client:
+    if device.protocol == "mqtt" and state.mqtt_client:
         from app.services.protocols.mqtt_protocol import build_topic_map, subscribe_state_topics
-        await build_topic_map()
-        subscribe_state_topics(_mqtt_client)
+        await build_topic_map(state)
+        subscribe_state_topics(state)
 
     return device
 
@@ -299,14 +291,15 @@ async def device_action(
     device_id: int,
     body: DeviceActionRequest,
     session: AsyncSession = Depends(get_session),
+    state: AppState = Depends(get_app_state),
 ):
-    if not _mqtt_client:
+    if not state.mqtt_client:
         raise HTTPException(503, "MQTT client not available")
 
     from app.services.device_handler import execute_action
 
     success = await execute_action(
-        session, _mqtt_client, device_id, body.capability_key, body.value,
+        session, state.mqtt_client, device_id, body.capability_key, body.value,
     )
     if not success:
         raise HTTPException(400, "Action failed — check device protocol, local key, or capability config")
