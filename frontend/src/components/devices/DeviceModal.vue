@@ -278,7 +278,7 @@ const actionCapabilities = computed(() =>
                 <template v-else>
                   <InputText
                     :modelValue="getTestValue(cap.key, cap.data_type, null) as string"
-                    @update:modelValue="setTestValue(cap.key, $event)"
+                    @update:modelValue="setTestValue(cap.key, $event ?? '')"
                     placeholder="Value"
                     class="w-24 text-sm"
                   />
