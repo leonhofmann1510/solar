@@ -45,37 +45,18 @@ async def read_state(device: Device) -> dict[str, dict]:
     """Read all datapoints from a Tuya device. Returns {dp_id: value}."""
     d = _get_tuya_device(device)
     if not d:
-        logger.warning(
-            "Cannot create Tuya device instance for device %d (%s) - missing IP or key",
-            device.id, device.name
-        )
         return {}
 
     try:
-        logger.debug(
-            "Reading Tuya device %d (%s) at %s (raw_id=%s, version=%s)",
-            device.id, device.name, device.ip_address, device.raw_id,
-            (device.meta or {}).get("tuya_version", "3.3")
-        )
         status = await asyncio.to_thread(d.status)
-    except Exception as e:
-        logger.error(
-            "Failed to read Tuya device %d (%s) at %s: %s",
-            device.id, device.name, device.ip_address, str(e)
-        )
-        raise
-
-    if "dps" not in status:
-        logger.warning(
-            "Tuya device %d (%s) at %s returned no dps: %s",
-            device.id, device.name, device.ip_address, status
-        )
+    except Exception:
+        logger.exception("Failed to read Tuya device %d (%s)", device.id, device.raw_id)
         return {}
 
-    logger.debug(
-        "Successfully read Tuya device %d (%s) at %s, got %d datapoint(s)",
-        device.id, device.name, device.ip_address, len(status["dps"])
-    )
+    if "dps" not in status:
+        logger.warning("Tuya device %d returned no dps: %s", device.id, status)
+        return {}
+
     return status["dps"]
 
 

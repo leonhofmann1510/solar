@@ -15,7 +15,6 @@ class ReadingOut(BaseModel):
     pv_string2_w: float
     battery_soc_pct: float | None
     battery_power_w: float | None
-    battery_running_state: int | None
     grid_power_w: float | None
     pv_yield_today_kwh: float
     feed_in_today_kwh: float | None
