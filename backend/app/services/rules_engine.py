@@ -150,14 +150,17 @@ async def run_engine(
     latest_readings: list[InverterData],
 ) -> None:
     """Evaluate all enabled rules against the latest inverter readings and device states."""
-    # Build a flat readings dict (use inv1 values, inv2 as fallback)
+    # Build readings dict matching dashboard logic:
+    # pv_power_w and pv_yield_today_kwh are summed across inverters; everything else from inv1 only.
+    _SUM_FIELDS = {"pv_power_w", "pv_yield_today_kwh"}
     readings: dict[str, float | None] = {}
     for data in latest_readings:
         for key, val in asdict(data).items():
             if key in ("inverter_id", "timestamp"):
                 continue
-            # First inverter's values take priority
-            if key not in readings or readings[key] is None:
+            if key in _SUM_FIELDS:
+                readings[key] = (readings.get(key) or 0) + (val or 0)
+            elif key not in readings:
                 readings[key] = val
 
     device_states = await _load_device_states(session)
