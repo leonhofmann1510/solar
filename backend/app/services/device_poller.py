@@ -82,7 +82,7 @@ async def poll_device_states(ws_manager=None) -> None:
                         # No data but no exception - treat as offline
                         device.consecutive_failures += 1
                         device.last_error = "No data returned"
-                        
+
                         if device.is_online:
                             logger.warning(
                                 "Device %d (%s) returned no data, marking OFFLINE",
@@ -90,14 +90,21 @@ async def poll_device_states(ws_manager=None) -> None:
                             )
                             device.is_online = False
                             offline_count += 1
-                            
+
                             if ws_manager:
                                 await ws_manager.broadcast({
                                     "event": "device_offline",
                                     "device_id": device.id,
                                     "device_name": device.name,
                                 })
-                        
+
+                        if device.consecutive_failures >= RESCAN_FAILURE_THRESHOLD:
+                            logger.warning(
+                                "Device %d (%s) has %d consecutive failures, will trigger network rescan",
+                                device.id, device.name, device.consecutive_failures
+                            )
+                            need_rescan = True
+
                         await session.commit()
                         continue
 
