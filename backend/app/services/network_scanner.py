@@ -7,24 +7,26 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-async def scan_for_tuya_device(ip: str, port: int = 6668, timeout: float = 0.2) -> bool:
+async def scan_for_tuya_device(ip: str, port: int = 6668, timeout: float = 0.5) -> bool:
     """Check if a Tuya device is reachable at the given IP address.
-    
+
     Args:
         ip: IP address to check
         port: Port to check (default 6668 for Tuya)
         timeout: Connection timeout in seconds
-        
+
     Returns:
         True if device responds on the port, False otherwise
     """
-    try:
-        # Use asyncio's wait_for with socket connection
+    def _check():
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         result = sock.connect_ex((ip, port))
         sock.close()
         return result == 0
+
+    try:
+        return await asyncio.to_thread(_check)
     except Exception:
         return False
 
@@ -34,7 +36,7 @@ async def scan_network_for_tuya_devices(
     start: int = 1,
     end: int = 254,
     port: int = 6668,
-    timeout: float = 0.2,
+    timeout: float = 0.5,
     max_concurrent: int = 50
 ) -> list[str]:
     """Scan a network range for Tuya devices.
@@ -71,42 +73,78 @@ async def scan_network_for_tuya_devices(
 
 async def find_tuya_device_by_id(
     device_id: str,
+    local_key: str,
     current_ip: Optional[str] = None,
-    base_ip: str = "192.168.178"
+    base_ip: str = "192.168.178",
+    version: float = 3.3
 ) -> Optional[str]:
     """Try to find a Tuya device's current IP address.
     
-    First tries the current known IP, then scans the network if not found.
+    First tries the current known IP, then scans the network and tests each IP.
     
     Args:
-        device_id: Tuya device ID
+        device_id: Tuya device ID (raw_id)
+        local_key: Decrypted local key for the device
         current_ip: Currently known IP address (if any)
         base_ip: Base IP to scan if device not at current_ip
+        version: Tuya protocol version (default 3.3)
         
     Returns:
         IP address where device was found, or None
     """
+    import tinytuya
+    
     # First, try current IP if we have one
     if current_ip:
         logger.debug(f"Checking if Tuya device {device_id} is still at {current_ip}")
         if await scan_for_tuya_device(current_ip):
-            logger.debug(f"Device {device_id} confirmed at {current_ip}")
-            return current_ip
+            # Port is open, try to connect and verify it's the right device
+            try:
+                d = tinytuya.OutletDevice(
+                    dev_id=device_id,
+                    address=current_ip,
+                    local_key=local_key,
+                    version=version,
+                )
+                d.set_socketPersistent(False)
+                status = await asyncio.to_thread(d.status)
+                if status and "dps" in status:
+                    logger.debug(f"Device {device_id} confirmed at {current_ip}")
+                    return current_ip
+            except Exception:
+                pass
         logger.warning(f"Device {device_id} not found at previous IP {current_ip}")
     
     # If not found at current IP, scan the network
     logger.info(f"Scanning network to locate Tuya device {device_id}")
     found_ips = await scan_network_for_tuya_devices(base_ip=base_ip)
     
-    # We can't identify which specific device without connecting and reading the ID
-    # So we return the list of found IPs - caller will need to try each one
-    # For now, just return None if we can't verify current IP
-    # Full implementation would require connecting to each found IP and reading device ID
-    
     if not found_ips:
         logger.warning(f"No Tuya devices found on network during scan for {device_id}")
         return None
     
-    logger.info(f"Found {len(found_ips)} Tuya device(s) on network, but cannot auto-match to {device_id}")
-    logger.info(f"Manual verification needed. Found devices at: {', '.join(found_ips)}")
+    # Try to connect to each found IP and check if it's our device
+    logger.info(f"Testing {len(found_ips)} found IP(s) to identify device {device_id}")
+    
+    for ip in found_ips:
+        try:
+            d = tinytuya.OutletDevice(
+                dev_id=device_id,
+                address=ip,
+                local_key=local_key,
+                version=version,
+            )
+            d.set_socketPersistent(False)
+            status = await asyncio.to_thread(d.status)
+            
+            if status and "dps" in status and status.get("dps"):
+                # Device responded with valid data - this is our device!
+                logger.info(f"✅ Found device {device_id} at NEW IP: {ip}")
+                return ip
+        except Exception as e:
+            # This IP wasn't the right device, continue
+            logger.debug(f"IP {ip} is not device {device_id}: {e}")
+            continue
+    
+    logger.warning(f"Device {device_id} not found among {len(found_ips)} scanned Tuya device(s)")
     return None

@@ -251,9 +251,10 @@ async def _fetch_and_save_devices(user_code: str, login_info: dict) -> int:
 
 
 async def scan_and_update_ips() -> dict:
-    """Scan the LAN for Tuya devices and update their IP addresses in the DB.
+    """Scan the LAN for Tuya devices via TCP and update their IP addresses in the DB.
 
-    Uses tinytuya's broadcast listener. Returns { scanned, updated }.
+    Uses TCP port scan (avoids UDP broadcast which doesn't cross Docker bridge networks),
+    then verifies each found IP by connecting with tinytuya. Returns { scanned, updated }.
     """
     try:
         import tinytuya
@@ -261,50 +262,55 @@ async def scan_and_update_ips() -> dict:
         logger.error("tinytuya not installed — cannot scan Tuya network")
         return {"scanned": 0, "updated": 0}
 
-    logger.info("Starting Tuya LAN scan...")
-    try:
-        scan_results: dict = await asyncio.to_thread(
-            lambda: tinytuya.deviceScan(verbose=False)
-        )
-    except Exception:
-        logger.exception("Tuya LAN scan failed")
+    from app.crypto import decrypt_value
+    from app.services.network_scanner import scan_network_for_tuya_devices
+
+    subnet = settings.tuya_lan_subnet
+    logger.info("Starting Tuya TCP scan on %s.1-254...", subnet)
+    found_ips = await scan_network_for_tuya_devices(base_ip=subnet)
+    if not found_ips:
+        logger.info("No Tuya devices found on LAN")
         return {"scanned": 0, "updated": 0}
 
-    if not scan_results:
-        logger.info("Tuya LAN scan found no devices")
-        return {"scanned": 0, "updated": 0}
-
-    # Build gwId -> {ip, version} from scan results
-    id_to_scan: dict[str, dict] = {
-        info["gwId"]: {"ip": ip, "version": str(info.get("version", "3.3"))}
-        for ip, info in scan_results.items()
-        if info.get("gwId")
-    }
-
+    # Match found IPs to DB devices via tinytuya connection attempt
     updated = 0
     async with async_session() as db:
         result = await db.execute(select(Device).where(Device.protocol == "tuya"))
         devices = result.scalars().all()
 
+        unmatched_ips = list(found_ips)
         for device in devices:
-            scan_info = id_to_scan.get(device.raw_id)
-            if not scan_info:
+            if not device.tuya_local_key:
                 continue
-            new_ip = scan_info["ip"]
-            version = scan_info["version"]
-            if new_ip != device.ip_address or (device.meta or {}).get("tuya_version") != version:
-                device.ip_address = new_ip
-                device.meta = {**(device.meta or {}), "tuya_version": version}
-                updated += 1
-                logger.info(
-                    "Updated Tuya device %s (%s) → IP=%s version=%s",
-                    device.name, device.raw_id, new_ip, version,
-                )
+            local_key = decrypt_value(device.tuya_local_key)
+            if not local_key:
+                continue
+            version = float((device.meta or {}).get("tuya_version", "3.3"))
+
+            for ip in list(unmatched_ips):
+                try:
+                    d = tinytuya.OutletDevice(
+                        dev_id=device.raw_id, address=ip,
+                        local_key=local_key, version=version
+                    )
+                    d.set_socketPersistent(False)
+                    status = await asyncio.to_thread(d.status)
+                    if status and "dps" in status and status["dps"]:
+                        if device.ip_address != ip:
+                            logger.info(
+                                "Updated %s: %s → %s", device.name, device.ip_address, ip
+                            )
+                            device.ip_address = ip
+                            updated += 1
+                        unmatched_ips.remove(ip)
+                        break
+                except Exception:
+                    pass
 
         await db.commit()
 
-    logger.info("Tuya LAN scan complete: %d found, %d updated", len(id_to_scan), updated)
-    return {"scanned": len(id_to_scan), "updated": updated}
+    logger.info("Tuya TCP scan complete: %d found, %d updated", len(found_ips), updated)
+    return {"scanned": len(found_ips), "updated": updated}
 
 
 async def _populate_capabilities(db, device: Device, sdk_device) -> int:

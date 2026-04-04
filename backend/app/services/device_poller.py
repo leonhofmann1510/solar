@@ -9,7 +9,6 @@ from app.config import settings
 from app.database import async_session
 from app.models import Device, DeviceCapability, DeviceState
 from app.services.protocols import tuya_protocol
-from app.services.network_scanner import scan_network_for_tuya_devices
 
 logger = logging.getLogger(__name__)
 
@@ -177,19 +176,17 @@ async def poll_device_states(ws_manager=None) -> None:
 
                     await session.commit()
                 
-                # Trigger network rescan if needed
-                if need_rescan and offline_count > 0:
-                    # Don't rescan too frequently (max once per 5 minutes)
+                # Trigger network rescan if needed (offline_count check removed — devices
+                # already offline have offline_count=0 every subsequent poll)
+                if need_rescan:
                     now = datetime.now(UTC)
                     if last_rescan_time is None or (now - last_rescan_time).total_seconds() > 300:
-                        logger.info(
-                            "Triggering network rescan due to %d offline device(s) with repeated failures",
-                            offline_count
-                        )
                         last_rescan_time = now
+                        logger.info("Triggering network rescan due to offline devices")
+                        from app.services.discovery.tuya_discovery import scan_and_update_ips
                         try:
-                            found_ips = await scan_network_for_tuya_devices()
-                            logger.info(f"Network rescan found {len(found_ips)} Tuya device(s) at: {', '.join(found_ips)}")
+                            result = await scan_and_update_ips()
+                            logger.info("Rescan complete: %s", result)
                         except Exception:
                             logger.exception("Network rescan failed")
 
