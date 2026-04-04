@@ -45,7 +45,6 @@ class Settings(BaseSettings):
     smart_meter_ip: str = ""
 
     # Discovery
-    tuya_lan_subnet: str = "192.168.178"  # configurable LAN subnet for TCP device scan
     zigbee2mqtt_bridge_topic: str = "zigbee2mqtt/bridge/devices"
     mdns_scan_timeout_seconds: int = 10
 
