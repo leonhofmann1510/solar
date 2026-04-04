@@ -13,6 +13,16 @@ from app.models import Device, DeviceCapability
 
 logger = logging.getLogger(__name__)
 
+
+def _is_private_ip(ip: str) -> bool:
+    """Return True if the IP is a private/local address (not a WAN/public IP)."""
+    import ipaddress
+    try:
+        return ipaddress.IPv4Address(ip).is_private
+    except ValueError:
+        return False
+
+
 # HA's registered client_id and schema (public, MIT-licensed, allowlisted by Tuya)
 TUYA_CLIENT_ID = "HA_3y9q4ak7g4ephrvke"
 TUYA_SCHEMA = "haauthorize"
@@ -190,9 +200,12 @@ async def _fetch_and_save_devices(user_code: str, login_info: dict) -> int:
             existing = result.scalar_one_or_none()
 
             if existing:
-                # Update key and IP in case they changed
+                # Update key and IP in case they changed.
+                # Only accept private/local IPs from the cloud SDK — the cloud often returns
+                # the router's WAN IP which would break local polling.
                 existing.tuya_local_key = encrypt_value(dev.local_key) if dev.local_key else None
-                existing.ip_address = dev.ip or existing.ip_address
+                if dev.ip and _is_private_ip(dev.ip):
+                    existing.ip_address = dev.ip
                 existing.last_seen_at = datetime.utcnow()
 
                 # Refresh DP IDs using the SDK's local_strategy so that
