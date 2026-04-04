@@ -93,6 +93,9 @@ class Device(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    is_online: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, server_default="0")
 
     capabilities: Mapped[list["DeviceCapability"]] = relationship(
         back_populates="device", cascade="all, delete-orphan"

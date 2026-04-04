@@ -74,6 +74,10 @@ async def poll_loop(mqtt_client: MQTTClient, ws_manager: ConnectionManager) -> N
     if meter:
         logger.info("Smart meter polling enabled (%s)", settings.smart_meter_ip)
 
+    # Track health for monitoring
+    last_successful_reading = asyncio.get_event_loop().time()
+    consecutive_failures = 0
+    
     try:
         while True:
             try:
@@ -95,6 +99,25 @@ async def poll_loop(mqtt_client: MQTTClient, ws_manager: ConnectionManager) -> N
 
                     for data in readings:
                         await ws_manager.broadcast(asdict(data))
+                    
+                    # Reset health tracking on success
+                    last_successful_reading = asyncio.get_event_loop().time()
+                    consecutive_failures = 0
+                else:
+                    # No readings collected
+                    consecutive_failures += 1
+                    logger.warning(
+                        "No inverter readings collected this cycle (failure %d)",
+                        consecutive_failures
+                    )
+
+                # Check if we haven't received data for too long
+                time_since_last_reading = asyncio.get_event_loop().time() - last_successful_reading
+                if time_since_last_reading > 300:  # 5 minutes
+                    logger.error(
+                        "CRITICAL: No inverter data received for %.1f minutes! Check inverter connectivity.",
+                        time_since_last_reading / 60
+                    )
 
                 # Poll smart meter independently — failures don't affect inverter polling
                 if meter:
@@ -112,6 +135,7 @@ async def poll_loop(mqtt_client: MQTTClient, ws_manager: ConnectionManager) -> N
 
             except Exception:
                 logger.exception("Unhandled error in poll iteration — will retry next cycle")
+                consecutive_failures += 1
 
             await asyncio.sleep(settings.poll_interval_seconds)
     finally:
