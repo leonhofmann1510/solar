@@ -4,12 +4,24 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import Select from 'primevue/select'
 import { useTuyaSetup } from '@/composables/useTuyaSetup'
 import { useMeterStore } from '@/stores/meter'
+import { useAppSettingsStore } from '@/stores/appSettings'
 import QRCode from 'qrcode'
 
 const meterStore = useMeterStore()
-onMounted(() => meterStore.fetchStatus())
+const appSettingsStore = useAppSettingsStore()
+onMounted(() => {
+  meterStore.fetchStatus()
+  appSettingsStore.fetch()
+})
+
+const timezones = Intl.supportedValuesOf('timeZone')
+
+async function onTimezoneChange(tz: string) {
+  await appSettingsStore.setTimezone(tz)
+}
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
@@ -149,6 +161,18 @@ function handleTuyaReset() {
           <div>
             <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Poll Interval</label>
             <p class="text-sm text-sf-text-1">30 seconds</p>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Timezone</label>
+            <Select
+              :modelValue="appSettingsStore.timezone"
+              :options="timezones"
+              filter
+              filterPlaceholder="Search timezone..."
+              class="w-full text-sm"
+              @update:modelValue="onTimezoneChange"
+            />
+            <p class="text-xs text-sf-text-3 mt-1">Used for chart labels in the Smart Meter view.</p>
           </div>
           <div>
             <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Version</label>

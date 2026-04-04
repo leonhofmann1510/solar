@@ -17,12 +17,14 @@ import AppShell from '@/components/layout/AppShell.vue'
 import SectionHeader from '@/components/shared/SectionHeader.vue'
 import StatCard from '@/components/dashboard/StatCard.vue'
 import { useMeterStore } from '@/stores/meter'
+import { useAppSettingsStore } from '@/stores/appSettings'
 import { getMeterReadings } from '@/api/meter'
 import type { MeterPoint, MeterView } from '@/types/meter'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
 
 const meterStore = useMeterStore()
+const appSettingsStore = useAppSettingsStore()
 
 const activeView = ref<MeterView>('day')
 const chartPoints = ref<MeterPoint[]>([])
@@ -49,6 +51,7 @@ onMounted(async () => {
 })
 
 watch(activeView, loadChart)
+watch(() => appSettingsStore.timezone, loadChart)
 
 // ── Chart data ────────────────────────────────────────────────────────────────
 

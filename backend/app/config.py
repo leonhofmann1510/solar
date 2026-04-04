@@ -40,6 +40,9 @@ class Settings(BaseSettings):
         }
         return endpoints.get(self.tuya_region, "https://px1.tuyaeu.com")
 
+    # Mutable runtime settings (timezone etc.) — persisted to this JSON file
+    app_settings_path: str = "../app_settings.json"
+
     # Smart Meter (Bitshake HTTP reader)
     smart_meter_enabled: bool = False
     smart_meter_ip: str = ""

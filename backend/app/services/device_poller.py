@@ -33,11 +33,7 @@ async def poll_device_states(ws_manager=None) -> None:
                     except Exception:
                         logger.exception("Failed to read state for Tuya device %d (%s)", device.id, device.name)
                         continue
-                    # Device responded (even if dps is empty) — mark as seen so it
-                    # doesn't appear offline due to a single transient read failure.
-                    device.last_seen_at = datetime.now(UTC)
                     if not dps:
-                        await session.commit()
                         continue
 
                     # Look up capabilities to map dp_id -> capability_key
@@ -94,6 +90,7 @@ async def poll_device_states(ws_manager=None) -> None:
                                 "value": broadcast_value,
                             })
 
+                    device.last_seen_at = datetime.now(UTC)
                     await session.commit()
 
         except Exception:

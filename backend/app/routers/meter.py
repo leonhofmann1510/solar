@@ -10,6 +10,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.database import async_session
 from app.models import MeterReading
+from app.services import app_settings as app_svc
 from sqlalchemy import select
 
 router = APIRouter(prefix="/api/meter", tags=["meter"])
@@ -93,13 +94,15 @@ async def get_readings(
             trunc = "hour"
             fmt = "HH24:00"
 
+    tz = app_svc.get("timezone") or "UTC"
+
     # Delta per bucket: how much kWh changed within the bucket
     query = text("""
         SELECT
-            to_char(date_trunc(:trunc, timestamp AT TIME ZONE 'UTC'), :fmt) AS label,
-            date_trunc(:trunc, timestamp AT TIME ZONE 'UTC')               AS bucket,
-            MAX(consumption_kwh) - MIN(consumption_kwh)                    AS consumption_kwh,
-            MAX(feed_in_kwh)     - MIN(feed_in_kwh)                        AS feed_in_kwh
+            to_char(date_trunc(:trunc, timestamp AT TIME ZONE :tz), :fmt) AS label,
+            date_trunc(:trunc, timestamp AT TIME ZONE :tz)                AS bucket,
+            MAX(consumption_kwh) - MIN(consumption_kwh)                   AS consumption_kwh,
+            MAX(feed_in_kwh)     - MIN(feed_in_kwh)                       AS feed_in_kwh
         FROM meter_readings
         WHERE timestamp >= :since
         GROUP BY bucket
@@ -107,7 +110,7 @@ async def get_readings(
     """)
 
     async with async_session() as session:
-        result = await session.execute(query, {"trunc": trunc, "fmt": fmt, "since": since})
+        result = await session.execute(query, {"trunc": trunc, "fmt": fmt, "since": since, "tz": tz})
         rows = result.fetchall()
 
     return [

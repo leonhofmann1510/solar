@@ -54,7 +54,7 @@ async def read_state(device: Device) -> dict[str, dict]:
         return {}
 
     if "dps" not in status:
-        logger.debug("Tuya device %d returned no dps: %s", device.id, status)
+        logger.warning("Tuya device %d (%s) returned no dps: %s", device.id, device.raw_id, status)
         return {}
 
     return status["dps"]
