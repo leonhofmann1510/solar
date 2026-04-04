@@ -302,7 +302,7 @@ const canProceedStep2 = computed(() => {
           </div>
           <div>
             <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Cooldown (seconds)</label>
-            <InputNumber v-model="cooldownSeconds" :min="0" :max="86400" class="w-full" />
+            <InputNumber v-model="cooldownSeconds" :min="0" :max="86400" fluid class="w-full" />
           </div>
           <div>
             <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">On Condition Clear</label>
@@ -331,7 +331,7 @@ const canProceedStep2 = computed(() => {
             </div>
             <div class="w-24">
               <label class="block text-[10px] text-sf-text-3 mb-0.5">Value</label>
-              <InputNumber v-model="cond.value" class="w-full text-sm" />
+              <InputNumber v-model="cond.value" fluid class="w-full text-sm" />
             </div>
             <Button icon="pi pi-times" text rounded severity="danger" size="small" @click="removeCondition(idx)" aria-label="Remove" />
           </div>
@@ -410,6 +410,7 @@ const canProceedStep2 = computed(() => {
                     v-else-if="['integer', 'float'].includes(getCapabilityDataType(action.device_id, action.capability_key))"
                     :modelValue="Number(action.value)"
                     @update:modelValue="action.value = $event ?? 0"
+                    fluid
                     class="w-full text-sm"
                   />
                   <!-- String: text input -->
