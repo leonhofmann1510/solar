@@ -19,7 +19,11 @@ export function useWebSocket() {
 
     socket.onmessage = (event) => {
       try {
-        latestReading.value = JSON.parse(event.data)
+        const msg = JSON.parse(event.data)
+        // Only update latestReading for inverter readings (no "event" field)
+        if (!msg.event) {
+          latestReading.value = msg
+        }
       } catch {
         console.warn('[WS] Could not parse message', event.data)
       }
