@@ -24,7 +24,7 @@ from app.services.discovery.mqtt_discovery import (
     handle_tasmota_discovery,
     handle_z2m_devices,
 )
-from app.services.discovery.tuya_discovery import cleanup_stale_sessions
+from app.services.discovery.tuya_discovery import cleanup_stale_sessions, tuya_ip_refresh_loop
 from app.services.mqtt import MQTTClient
 from app.services.poller import poll_loop
 from app.services.protocols.mqtt_protocol import build_topic_map, handle_state_message, subscribe_state_topics
@@ -34,6 +34,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
 )
+for _noisy in ("tinytuya", "httpcore", "httpx"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -163,6 +165,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(poll_loop(app_state.mqtt_client, app_state.ws_manager)),
         asyncio.create_task(poll_device_states(app_state.ws_manager)),
         asyncio.create_task(_cleanup_loop()),
+        asyncio.create_task(tuya_ip_refresh_loop()),
     ]
     logger.info("Background tasks started (poller=%ds interval)", settings.poll_interval_seconds)
 

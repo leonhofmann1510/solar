@@ -253,52 +253,20 @@ async def _fetch_and_save_devices(user_code: str, login_info: dict) -> int:
 async def scan_and_update_ips() -> dict:
     """Scan the LAN for Tuya devices and update their IP addresses in the DB.
 
-    First tries UDP broadcast (tinytuya.deviceScan). If that finds nothing —
-    which happens when running inside a Docker bridge network — falls back to a
-    TCP port-6668 sweep of TUYA_SCAN_SUBNET, then identifies each device by
-    trying its stored local key against each responding IP.
+    Uses TCP port-6668 sweep of TUYA_SCAN_SUBNET, then identifies each device
+    by trying its stored local key against each responding IP.
 
     Returns { scanned, updated }.
     """
-    try:
-        import tinytuya
-    except ImportError:
-        logger.error("tinytuya not installed — cannot scan Tuya network")
+    if not settings.tuya_scan_subnet:
+        logger.warning("TUYA_SCAN_SUBNET is not set — skipping Tuya IP scan")
         return {"scanned": 0, "updated": 0}
 
-    logger.info("Starting Tuya LAN scan (UDP broadcast)...")
-    try:
-        scan_results: dict = await asyncio.to_thread(
-            lambda: tinytuya.deviceScan(verbose=False)
-        )
-    except Exception:
-        logger.exception("Tuya UDP scan failed")
-        scan_results = {}
+    async with async_session() as db:
+        result = await db.execute(select(Device).where(Device.protocol == "tuya"))
+        known_devices = result.scalars().all()
 
-    # Build gwId -> {ip, version} from UDP results
-    id_to_scan: dict[str, dict] = {
-        info["gwId"]: {"ip": ip, "version": str(info.get("version", "3.3"))}
-        for ip, info in scan_results.items()
-        if info.get("gwId")
-    }
-
-    # UDP found nothing → fall back to TCP subnet scan if configured
-    if not id_to_scan:
-        if not settings.tuya_scan_subnet:
-            logger.info(
-                "UDP scan found 0 devices and TUYA_SCAN_SUBNET is not set — skipping TCP fallback"
-            )
-            return {"scanned": 0, "updated": 0}
-
-        logger.info(
-            "UDP broadcast found 0 devices — starting TCP port scan of %s",
-            settings.tuya_scan_subnet,
-        )
-        async with async_session() as db:
-            result = await db.execute(select(Device).where(Device.protocol == "tuya"))
-            known_devices = result.scalars().all()
-
-        id_to_scan = await _tcp_scan_and_match(settings.tuya_scan_subnet, known_devices)
+    id_to_scan = await _tcp_scan_and_match(settings.tuya_scan_subnet, known_devices)
 
     if not id_to_scan:
         logger.info("Tuya scan found no devices")
@@ -372,7 +340,7 @@ async def _port_scan_6668(network) -> list[str]:
         async with sem:
             try:
                 _, writer = await asyncio.wait_for(
-                    asyncio.open_connection(ip, 6668), timeout=0.5
+                    asyncio.open_connection(ip, 6668), timeout=1.0
                 )
                 writer.close()
                 try:
@@ -415,7 +383,7 @@ async def _identify_device_at_ip(ip: str, devices: list) -> dict | None:
 
         try:
             result = await asyncio.wait_for(
-                asyncio.to_thread(d.status), timeout=3.0
+                asyncio.to_thread(d.status), timeout=5.0
             )
             if result and "dps" in result:
                 logger.info(
@@ -575,6 +543,14 @@ def _get_default_capabilities(category: str) -> list[dict]:
     return defaults.get(category, [
         {"key": "switch", "display_name": "Switch", "capability_type": "both", "data_type": "boolean", "tuya_dp_id": 1},
     ])
+
+
+async def tuya_ip_refresh_loop() -> None:
+    """Background task: scan and update Tuya device IPs immediately on start,
+    then every 30 minutes. Keeps IPs correct after DHCP changes or reboots."""
+    while True:
+        await scan_and_update_ips()
+        await asyncio.sleep(30 * 60)
 
 
 async def cleanup_stale_sessions():
