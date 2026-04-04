@@ -253,7 +253,12 @@ async def _fetch_and_save_devices(user_code: str, login_info: dict) -> int:
 async def scan_and_update_ips() -> dict:
     """Scan the LAN for Tuya devices and update their IP addresses in the DB.
 
-    Uses tinytuya's broadcast listener. Returns { scanned, updated }.
+    First tries UDP broadcast (tinytuya.deviceScan). If that finds nothing —
+    which happens when running inside a Docker bridge network — falls back to a
+    TCP port-6668 sweep of TUYA_SCAN_SUBNET, then identifies each device by
+    trying its stored local key against each responding IP.
+
+    Returns { scanned, updated }.
     """
     try:
         import tinytuya
@@ -261,25 +266,43 @@ async def scan_and_update_ips() -> dict:
         logger.error("tinytuya not installed — cannot scan Tuya network")
         return {"scanned": 0, "updated": 0}
 
-    logger.info("Starting Tuya LAN scan...")
+    logger.info("Starting Tuya LAN scan (UDP broadcast)...")
     try:
         scan_results: dict = await asyncio.to_thread(
             lambda: tinytuya.deviceScan(verbose=False)
         )
     except Exception:
-        logger.exception("Tuya LAN scan failed")
-        return {"scanned": 0, "updated": 0}
+        logger.exception("Tuya UDP scan failed")
+        scan_results = {}
 
-    if not scan_results:
-        logger.info("Tuya LAN scan found no devices")
-        return {"scanned": 0, "updated": 0}
-
-    # Build gwId -> {ip, version} from scan results
+    # Build gwId -> {ip, version} from UDP results
     id_to_scan: dict[str, dict] = {
         info["gwId"]: {"ip": ip, "version": str(info.get("version", "3.3"))}
         for ip, info in scan_results.items()
         if info.get("gwId")
     }
+
+    # UDP found nothing → fall back to TCP subnet scan if configured
+    if not id_to_scan:
+        if not settings.tuya_scan_subnet:
+            logger.info(
+                "UDP scan found 0 devices and TUYA_SCAN_SUBNET is not set — skipping TCP fallback"
+            )
+            return {"scanned": 0, "updated": 0}
+
+        logger.info(
+            "UDP broadcast found 0 devices — starting TCP port scan of %s",
+            settings.tuya_scan_subnet,
+        )
+        async with async_session() as db:
+            result = await db.execute(select(Device).where(Device.protocol == "tuya"))
+            known_devices = result.scalars().all()
+
+        id_to_scan = await _tcp_scan_and_match(settings.tuya_scan_subnet, known_devices)
+
+    if not id_to_scan:
+        logger.info("Tuya scan found no devices")
+        return {"scanned": 0, "updated": 0}
 
     updated = 0
     async with async_session() as db:
@@ -303,8 +326,107 @@ async def scan_and_update_ips() -> dict:
 
         await db.commit()
 
-    logger.info("Tuya LAN scan complete: %d found, %d updated", len(id_to_scan), updated)
+    logger.info("Tuya scan complete: %d found, %d updated", len(id_to_scan), updated)
     return {"scanned": len(id_to_scan), "updated": updated}
+
+
+async def _tcp_scan_and_match(subnet: str, known_devices: list) -> dict[str, dict]:
+    """TCP port-6668 scan of a subnet, then match each open IP to a known device.
+
+    Works inside Docker bridge where UDP broadcasts don't reach the physical LAN.
+    Returns the same gwId -> {ip, version} format as the UDP path.
+    """
+    import ipaddress
+
+    try:
+        network = ipaddress.IPv4Network(subnet, strict=False)
+    except ValueError:
+        logger.error("Invalid TUYA_SCAN_SUBNET: %s", subnet)
+        return {}
+
+    open_ips = await _port_scan_6668(network)
+    logger.info(
+        "TCP port scan of %s: %d IP(s) with port 6668 open: %s",
+        subnet, len(open_ips), open_ips,
+    )
+    if not open_ips:
+        return {}
+
+    id_to_scan: dict[str, dict] = {}
+
+    async def probe(ip: str) -> None:
+        match = await _identify_device_at_ip(ip, known_devices)
+        if match:
+            id_to_scan[match["gwId"]] = {"ip": ip, "version": match["version"]}
+
+    await asyncio.gather(*[probe(ip) for ip in open_ips])
+    logger.info("TCP scan matched %d / %d device(s)", len(id_to_scan), len(open_ips))
+    return id_to_scan
+
+
+async def _port_scan_6668(network) -> list[str]:
+    """Return all host IPs in *network* that have TCP port 6668 open."""
+    sem = asyncio.Semaphore(64)
+
+    async def check(ip: str) -> str | None:
+        async with sem:
+            try:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(ip, 6668), timeout=0.5
+                )
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+                return ip
+            except Exception:
+                return None
+
+    results = await asyncio.gather(*[check(str(ip)) for ip in network.hosts()])
+    return [ip for ip in results if ip]
+
+
+async def _identify_device_at_ip(ip: str, devices: list) -> dict | None:
+    """Try each known device's credentials against *ip* to find which device lives there.
+
+    A correct gwId + local_key pair returns valid ``dps``; a wrong pair causes
+    the device to return a decryption error almost instantly.  Returns
+    ``{gwId, version}`` on success, ``None`` if no device matched.
+    """
+    import tinytuya
+    from app.crypto import decrypt_value
+
+    for device in devices:
+        if not device.tuya_local_key:
+            continue
+        local_key = decrypt_value(device.tuya_local_key)
+        if not local_key:
+            continue
+
+        version = float((device.meta or {}).get("tuya_version", "3.3"))
+        d = tinytuya.OutletDevice(
+            dev_id=device.raw_id,
+            address=ip,
+            local_key=local_key,
+            version=version,
+        )
+        d.set_socketPersistent(False)
+
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(d.status), timeout=3.0
+            )
+            if result and "dps" in result:
+                logger.info(
+                    "TCP scan: identified device %s (%s) at %s",
+                    device.name, device.raw_id, ip,
+                )
+                return {"gwId": device.raw_id, "version": str(version)}
+        except Exception:
+            pass
+
+    return None
 
 
 async def _populate_capabilities(db, device: Device, sdk_device) -> int:

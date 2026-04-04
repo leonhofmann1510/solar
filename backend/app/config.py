@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     # Discovery
     zigbee2mqtt_bridge_topic: str = "zigbee2mqtt/bridge/devices"
     mdns_scan_timeout_seconds: int = 10
+    tuya_scan_subnet: str = ""
 
     # CORS — comma-separated list of allowed origins
     cors_origins: str = "http://localhost:5173,http://localhost:5174"
