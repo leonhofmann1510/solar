@@ -165,10 +165,13 @@ class SungrowModbus:
         max_addr = max(addresses)
         count = max_addr - min_addr + 1
 
-        if holding:
-            resp = self._client.read_holding_registers(min_addr, count=count, slave=self._unit)
-        else:
-            resp = self._client.read_input_registers(min_addr, count=count, slave=self._unit)
+        try:
+            if holding:
+                resp = self._client.read_holding_registers(min_addr, count=count, slave=self._unit)
+            else:
+                resp = self._client.read_input_registers(min_addr, count=count, slave=self._unit)
+        except OSError:
+            return None
 
         if resp.isError():
             logger.error(
