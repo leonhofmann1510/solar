@@ -49,29 +49,29 @@ async def _seed_rules_from_file() -> None:
     with open(path) as f:
         data = yaml.safe_load(f)
 
-    if not data or "rules" not in data:
+    if not data or not data.get("rules"):
         return
 
     async with async_session() as session:
         for entry in data["rules"]:
-            result = await session.execute(
-                select(Rule).where(Rule.name == entry["name"])
-            )
-            if result.scalar_one_or_none():
-                continue
+                result = await session.execute(
+                    select(Rule).where(Rule.name == entry["name"])
+                )
+                if result.scalar_one_or_none():
+                    continue
 
-            rule = Rule(
-                name=entry["name"],
-                enabled=entry.get("enabled", True),
-                condition_logic=entry.get("condition_logic", "AND"),
-                conditions=entry["conditions"],
-                actions=entry["actions"],
-                on_clear_action=entry.get("on_clear_action", "none"),
-                on_clear_payload=entry.get("on_clear_payload"),
-                cooldown_seconds=entry.get("cooldown_seconds", 0),
-            )
-            session.add(rule)
-            logger.info("Seeded rule: %s", rule.name)
+                rule = Rule(
+                    name=entry["name"],
+                    enabled=entry.get("enabled", True),
+                    condition_logic=entry.get("condition_logic", "AND"),
+                    conditions=entry["conditions"],
+                    actions=entry["actions"],
+                    on_clear_action=entry.get("on_clear_action", "none"),
+                    on_clear_payload=entry.get("on_clear_payload"),
+                    cooldown_seconds=entry.get("cooldown_seconds", 0),
+                )
+                session.add(rule)
+                logger.info("Seeded rule: %s", rule.name)
 
         await session.commit()
 
