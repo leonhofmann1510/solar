@@ -180,3 +180,11 @@ class DailyStatOut(BaseModel):
     feed_in_kwh: float
     grid_buy_kwh: float
     self_consumption_kwh: float
+
+
+class StatChartPoint(BaseModel):
+    label: str
+    yield_kwh: float
+    feed_in_kwh: float
+    grid_buy_kwh: float
+    self_consumption_kwh: float

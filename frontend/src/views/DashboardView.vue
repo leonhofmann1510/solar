@@ -9,6 +9,7 @@ import StatCard from '@/components/dashboard/StatCard.vue'
 import BatteryCard from '@/components/dashboard/BatteryCard.vue'
 import GridPowerCard from '@/components/dashboard/GridPowerCard.vue'
 import SummaryLinkCard from '@/components/dashboard/SummaryLinkCard.vue'
+import EnergyHistoryChart from '@/components/dashboard/EnergyHistoryChart.vue'
 import StatusDot from '@/components/shared/StatusDot.vue'
 import Skeleton from 'primevue/skeleton'
 
@@ -137,6 +138,8 @@ const idleRules = computed(() =>
         :loading="loading"
       />
     </div>
+
+    <EnergyHistoryChart class="mb-6" />
 
     <SectionHeader title="Inverters" />
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
