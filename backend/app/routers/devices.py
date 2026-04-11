@@ -161,6 +161,8 @@ async def update_device(
         device.room = body.room
     if body.enabled is not None:
         device.enabled = body.enabled
+    if body.ip_address is not None:
+        device.ip_address = body.ip_address
 
     await session.commit()
     await session.refresh(device)

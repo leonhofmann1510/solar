@@ -46,6 +46,7 @@ export interface DeviceUpdate {
   name?: string
   room?: string | null
   enabled?: boolean
+  ip_address?: string | null
 }
 
 export interface DeviceActionRequest {

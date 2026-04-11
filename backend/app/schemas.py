@@ -153,6 +153,7 @@ class DeviceUpdate(BaseModel):
     name: str | None = None
     room: str | None = None
     enabled: bool | None = None
+    ip_address: str | None = None
 
 
 class DeviceActionRequest(BaseModel):

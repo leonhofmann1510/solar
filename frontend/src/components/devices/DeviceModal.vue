@@ -32,6 +32,7 @@ const dialogVisible = computed({
 const editName = ref('')
 const editRoom = ref('')
 const editEnabled = ref(true)
+const editIp = ref('')
 const saving = ref(false)
 const testing = ref<string | null>(null)
 const testResult = ref<string | null>(null)
@@ -54,6 +55,7 @@ watch(() => props.device, (d) => {
     editName.value = d.name
     editRoom.value = d.room || ''
     editEnabled.value = d.enabled
+    editIp.value = d.ip_address || ''
     testResult.value = null
   }
 })
@@ -66,6 +68,7 @@ async function handleSave() {
       name: editName.value,
       room: editRoom.value || null,
       enabled: editEnabled.value,
+      ip_address: editIp.value || null,
     })
     emit('updated')
   } finally {
@@ -164,9 +167,9 @@ const actionCapabilities = computed(() =>
             <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1">Raw ID</label>
             <p class="text-xs text-sf-text-3 font-mono break-all">{{ device.raw_id }}</p>
           </div>
-          <div v-if="device.ip_address">
+          <div>
             <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1">IP Address</label>
-            <p class="text-sm text-sf-text-1">{{ device.ip_address }}</p>
+            <InputText v-model="editIp" class="w-full text-sm" placeholder="e.g. 192.168.1.100" />
           </div>
           <div>
             <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1">First Seen</label>
