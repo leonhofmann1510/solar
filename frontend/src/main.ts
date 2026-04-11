@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+import { registerSW } from 'virtual:pwa-register'
 import PrimeVue from 'primevue/config'
 import Aura from '@primevue/themes/aura'
 import ConfirmationService from 'primevue/confirmationservice'
@@ -9,6 +10,8 @@ import './assets/main.css'
 
 import App from './App.vue'
 import router from './router'
+
+registerSW({ immediate: true })
 
 const app = createApp(App)
 
