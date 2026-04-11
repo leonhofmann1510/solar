@@ -374,9 +374,19 @@ async def _identify_device_at_ip(ip: str, devices: list) -> dict | None:
     A correct gwId + local_key pair returns valid ``dps``; a wrong pair causes
     the device to return a decryption error almost instantly.  Returns
     ``{gwId, version}`` on success, ``None`` if no device matched.
+
+    We try all common Tuya protocol versions per device because the version is not
+    reliably known before first contact — especially for newly-added devices whose
+    meta lacks a tuya_version entry.  Using the wrong version causes status() to
+    return an error or empty response, which would otherwise silently prevent the
+    device from ever being identified and its IP updated.
     """
     import tinytuya
     from app.crypto import decrypt_value
+
+    # Canonical version order: try the most common newer ones first so we detect
+    # 3.4/3.5 devices correctly and store the right version for future polling.
+    _ALL_VERSIONS = [3.4, 3.5, 3.3]
 
     for device in devices:
         if not device.tuya_local_key:
@@ -385,27 +395,35 @@ async def _identify_device_at_ip(ip: str, devices: list) -> dict | None:
         if not local_key:
             continue
 
-        version = float((device.meta or {}).get("tuya_version", "3.3"))
-        d = tinytuya.OutletDevice(
-            dev_id=device.raw_id,
-            address=ip,
-            local_key=local_key,
-            version=version,
-        )
-        d.set_socketPersistent(False)
+        stored_version = float((device.meta or {}).get("tuya_version", "3.3"))
+        # Always try the stored version first (it's correct for already-known devices),
+        # then fall back to the others so newly-added devices with the wrong default
+        # (3.3) are still identified if they actually speak 3.4 or 3.5.
+        versions_to_try: list[float] = [stored_version] + [
+            v for v in _ALL_VERSIONS if v != stored_version
+        ]
 
-        try:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(d.status), timeout=5.0
+        for version in versions_to_try:
+            d = tinytuya.OutletDevice(
+                dev_id=device.raw_id,
+                address=ip,
+                local_key=local_key,
+                version=version,
             )
-            if result and "dps" in result:
-                logger.info(
-                    "TCP scan: identified device %s (%s) at %s",
-                    device.name, device.raw_id, ip,
+            d.set_socketPersistent(False)
+
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(d.status), timeout=5.0
                 )
-                return {"gwId": device.raw_id, "version": str(version)}
-        except Exception:
-            pass
+                if result and "dps" in result:
+                    logger.info(
+                        "TCP scan: identified device %s (%s) at %s (version=%s)",
+                        device.name, device.raw_id, ip, version,
+                    )
+                    return {"gwId": device.raw_id, "version": str(version)}
+            except Exception:
+                pass
 
     return None
 
