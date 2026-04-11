@@ -305,6 +305,9 @@ async def scan_and_update_ips() -> dict:
                     device.name, device.raw_id, new_ip, version,
                 )
 
+            if scan_info.get("dps"):
+                await _refresh_capabilities_from_dps(db, device, scan_info["dps"])
+
         await db.commit()
 
     logger.info("Tuya scan complete: %d found, %d updated", len(id_to_scan), updated)
@@ -338,12 +341,7 @@ async def _tcp_scan_and_match(subnet: str, known_devices: list) -> dict[str, dic
     async def probe(ip: str) -> None:
         match = await _identify_device_at_ip(ip, known_devices)
         if match:
-            id_to_scan[match["gwId"]] = {"ip": ip, "version": match["version"]}
-        else:
-            logger.info(
-                "TCP scan: port 6668 open at %s but no known device matched "
-                "(stale key, unknown device, or unsupported protocol version)", ip,
-            )
+            id_to_scan[match["gwId"]] = {"ip": ip, "version": match["version"], "dps": match.get("dps", {})}
 
     await asyncio.gather(*[probe(ip) for ip in open_ips])
     logger.info("TCP scan matched %d / %d device(s)", len(id_to_scan), len(open_ips))
@@ -426,21 +424,9 @@ async def _identify_device_at_ip(ip: str, devices: list) -> dict | None:
                         "TCP scan: identified device %s (%s) at %s (version=%s)",
                         device.name, device.raw_id, ip, version,
                     )
-                    return {"gwId": device.raw_id, "version": str(version)}
-                logger.debug(
-                    "TCP scan: no dps from %s at %s v%s → %s",
-                    device.raw_id, ip, version, result,
-                )
-            except asyncio.TimeoutError:
-                logger.debug(
-                    "TCP scan: timeout probing %s at %s v%s",
-                    device.raw_id, ip, version,
-                )
-            except Exception as exc:
-                logger.debug(
-                    "TCP scan: error probing %s at %s v%s: %s",
-                    device.raw_id, ip, version, exc,
-                )
+                    return {"gwId": device.raw_id, "version": str(version), "dps": result["dps"]}
+            except (asyncio.TimeoutError, Exception):
+                pass
 
     return None
 
@@ -591,6 +577,60 @@ def _get_default_capabilities(category: str) -> list[dict]:
     return defaults.get(category, [
         {"key": "switch", "display_name": "Switch", "capability_type": "both", "data_type": "boolean", "tuya_dp_id": 1},
     ])
+
+
+async def _refresh_capabilities_from_dps(db, device: Device, dps: dict) -> bool:
+    """Replace device capabilities with ones derived from live DPS if they don't match.
+
+    Called after every successful TCP scan so that devices that received wrong
+    default capabilities (e.g. category fallback) are self-corrected once we
+    can actually talk to the device and read its real datapoints.
+
+    Returns True if capabilities were changed.
+    """
+    actual_dp_ids = {int(k) for k in dps.keys()}
+    if not actual_dp_ids:
+        return False
+
+    caps_result = await db.execute(
+        select(DeviceCapability).where(DeviceCapability.device_id == device.id)
+    )
+    existing_caps = caps_result.scalars().all()
+    existing_dp_ids = {c.tuya_dp_id for c in existing_caps if c.tuya_dp_id is not None}
+
+    # All actual DPs already covered — nothing to fix
+    if actual_dp_ids.issubset(existing_dp_ids):
+        return False
+
+    # Mismatch: replace all capabilities with live-derived ones
+    for cap in existing_caps:
+        await db.delete(cap)
+
+    for dp_id_raw, value in dps.items():
+        dp_id = int(dp_id_raw)
+        if isinstance(value, bool):
+            data_type = "boolean"
+        elif isinstance(value, (int, float)):
+            data_type = "integer"
+        else:
+            data_type = "string"
+
+        cap = DeviceCapability(
+            device_id=device.id,
+            key=f"dp_{dp_id}",
+            display_name=f"DP {dp_id}",
+            capability_type="both",
+            data_type=data_type,
+            tuya_dp_id=dp_id,
+        )
+        db.add(cap)
+
+    logger.info(
+        "Refreshed capabilities for %s (%s): DP IDs %s → %s",
+        device.name, device.raw_id,
+        sorted(existing_dp_ids), sorted(actual_dp_ids),
+    )
+    return True
 
 
 async def tuya_ip_refresh_loop() -> None:
