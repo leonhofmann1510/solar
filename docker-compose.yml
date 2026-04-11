@@ -28,6 +28,7 @@ services:
     volumes:
       - ./rules:/app/rules
       - ./inverters.yaml:/app/inverters.yaml
+      - ./app_settings.json:/app_settings.json
 
   frontend:
     build: ./frontend
