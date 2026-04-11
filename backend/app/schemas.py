@@ -188,3 +188,8 @@ class StatChartPoint(BaseModel):
     feed_in_kwh: float
     grid_buy_kwh: float
     self_consumption_kwh: float
+
+
+class SelfSufficiencyOut(BaseModel):
+    rate_pct: float
+    week_delta_pct: float | None

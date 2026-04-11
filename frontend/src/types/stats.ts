@@ -7,3 +7,8 @@ export interface StatChartPoint {
 }
 
 export type StatsView = 'day' | 'week' | 'month' | 'year'
+
+export interface SelfSufficiencyOut {
+  rate_pct: number
+  week_delta_pct: number | null
+}

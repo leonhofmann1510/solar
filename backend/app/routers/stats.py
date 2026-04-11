@@ -7,11 +7,64 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 
 from app.database import async_session
-from app.schemas import DailyStatOut, StatChartPoint, TodayStatOut
+from app.schemas import DailyStatOut, SelfSufficiencyOut, StatChartPoint, TodayStatOut
 from app.services import app_settings as app_svc
 from app.state import AppState, get_app_state
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
+
+
+@router.get("/self-sufficiency", response_model=SelfSufficiencyOut)
+async def self_sufficiency() -> SelfSufficiencyOut:
+    """365-day self-sufficiency rate and week-over-week delta."""
+    since: date = (datetime.now(tz=timezone.utc) - timedelta(days=365)).date()
+
+    rate_query = text("""
+        SELECT
+            COALESCE(SUM(sc), 0) AS total_self_consumption,
+            COALESCE(SUM(sc) + SUM(gb), 0) AS total_consumption
+        FROM (
+            SELECT
+                GREATEST(0, SUM(max_yield) - MAX(max_feed_in)) AS sc,
+                COALESCE(MAX(max_grid_buy), 0) AS gb
+            FROM (
+                SELECT date, inverter_id,
+                    MAX(pv_yield_today_kwh) AS max_yield,
+                    MAX(feed_in_today_kwh)  AS max_feed_in,
+                    MAX(grid_buy_today_kwh) AS max_grid_buy
+                FROM inverter_daily_stats
+                WHERE date >= :since
+                GROUP BY date, inverter_id
+            ) per_inv
+            GROUP BY date
+        ) per_day
+    """)
+
+    history_query = text("""
+        SELECT rate_pct
+        FROM self_sufficiency_history
+        WHERE timestamp <= :cutoff
+        ORDER BY ABS(EXTRACT(EPOCH FROM (timestamp - :cutoff)))
+        LIMIT 1
+    """)
+
+    async with async_session() as session:
+        result = await session.execute(rate_query, {"since": since})
+        row = result.fetchone()
+
+        total_sc = float(row.total_self_consumption or 0.0)
+        total_consumption = float(row.total_consumption or 0.0)
+        rate_pct = round((total_sc / total_consumption * 100) if total_consumption > 0 else 0.0, 1)
+
+        cutoff = datetime.now(tz=timezone.utc) - timedelta(days=7)
+        hist_result = await session.execute(history_query, {"cutoff": cutoff})
+        hist_row = hist_result.fetchone()
+
+    week_delta_pct: float | None = None
+    if hist_row is not None:
+        week_delta_pct = round(rate_pct - float(hist_row.rate_pct), 1)
+
+    return SelfSufficiencyOut(rate_pct=rate_pct, week_delta_pct=week_delta_pct)
 
 
 @router.get("/today", response_model=TodayStatOut)

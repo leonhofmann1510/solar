@@ -51,6 +51,14 @@ class Rule(Base):
     state: Mapped[str] = mapped_column(String(16), default="idle")
 
 
+class SelfSufficiencyHistory(Base):
+    __tablename__ = "self_sufficiency_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    rate_pct: Mapped[float] = mapped_column(Float, nullable=False)
+
+
 class RuleEvent(Base):
     __tablename__ = "rule_events"
 

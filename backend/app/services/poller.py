@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
+
+from sqlalchemy import text
 
 from app.config import settings
 from app.database import async_session
-from app.models import InverterDailyStat, MeterReading
+from app.models import InverterDailyStat, MeterReading, SelfSufficiencyHistory
 from app.services.meter import BitshakeSmartMeter, MeterData
 from app.services.modbus import InverterData, SungrowModbus, load_inverter_configs
 from app.services.rules_engine import run_engine
@@ -119,6 +121,44 @@ async def poll_loop(app_state: AppState) -> None:
                                 ))
                             await session.commit()
                         logger.info("Saved hourly inverter stats for hour %d", _last_save_hour)
+
+                    # Compute and save self-sufficiency rate snapshot
+                    try:
+                        since_365: date = (datetime.now(tz=timezone.utc) - timedelta(days=365)).date()
+                        rate_query = text("""
+                            SELECT
+                                COALESCE(SUM(sc), 0) AS total_self_consumption,
+                                COALESCE(SUM(sc) + SUM(gb), 0) AS total_consumption
+                            FROM (
+                                SELECT
+                                    GREATEST(0, SUM(max_yield) - MAX(max_feed_in)) AS sc,
+                                    COALESCE(MAX(max_grid_buy), 0) AS gb
+                                FROM (
+                                    SELECT date, inverter_id,
+                                        MAX(pv_yield_today_kwh) AS max_yield,
+                                        MAX(feed_in_today_kwh)  AS max_feed_in,
+                                        MAX(grid_buy_today_kwh) AS max_grid_buy
+                                    FROM inverter_daily_stats
+                                    WHERE date >= :since
+                                    GROUP BY date, inverter_id
+                                ) per_inv
+                                GROUP BY date
+                            ) per_day
+                        """)
+                        async with async_session() as session:
+                            result = await session.execute(rate_query, {"since": since_365})
+                            row = result.fetchone()
+                            total_sc = float(row.total_self_consumption or 0.0)
+                            total_consumption = float(row.total_consumption or 0.0)
+                            rate_pct = round((total_sc / total_consumption * 100) if total_consumption > 0 else 0.0, 1)
+                            session.add(SelfSufficiencyHistory(
+                                timestamp=datetime.now(tz=timezone.utc),
+                                rate_pct=rate_pct,
+                            ))
+                            await session.commit()
+                        logger.info("Saved self-sufficiency snapshot: %.1f%%", rate_pct)
+                    except Exception:
+                        logger.exception("Failed to save self-sufficiency snapshot")
 
                 # Store current as "previous" for next cycle
                 if readings:

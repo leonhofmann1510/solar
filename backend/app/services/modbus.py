@@ -19,6 +19,7 @@ from pathlib import Path
 
 import yaml
 from pymodbus.client import ModbusTcpClient
+from pymodbus.exceptions import ConnectionException
 
 logger = logging.getLogger(__name__)
 logging.getLogger("pymodbus").setLevel(logging.CRITICAL)
@@ -170,7 +171,7 @@ class SungrowModbus:
                 resp = self._client.read_holding_registers(min_addr, count=count, slave=self._unit)
             else:
                 resp = self._client.read_input_registers(min_addr, count=count, slave=self._unit)
-        except OSError:
+        except (OSError, ConnectionException):
             return None
 
         if resp.isError():

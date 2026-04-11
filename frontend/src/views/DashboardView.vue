@@ -10,6 +10,7 @@ import BatteryCard from '@/components/dashboard/BatteryCard.vue'
 import GridPowerCard from '@/components/dashboard/GridPowerCard.vue'
 import SummaryLinkCard from '@/components/dashboard/SummaryLinkCard.vue'
 import EnergyHistoryChart from '@/components/dashboard/EnergyHistoryChart.vue'
+import SelfSufficiencyCard from '@/components/dashboard/SelfSufficiencyCard.vue'
 import StatusDot from '@/components/shared/StatusDot.vue'
 import Skeleton from 'primevue/skeleton'
 
@@ -89,7 +90,7 @@ const idleRules = computed(() =>
     </div>
 
     <SectionHeader title="Solar System" />
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
       <StatCard
         label="PV Power"
         :value="totalCurrentPower != null ? totalCurrentPower.toFixed(1) : null"
@@ -100,7 +101,7 @@ const idleRules = computed(() =>
       />
       <GridPowerCard :gridPowerW="gridPowerW" :loading="loading" />
       <BatteryCard :soc="batterySoc" :power="batteryPower" :runningState="batteryRunningState" :loading="loading" />
-
+      <SelfSufficiencyCard />
     </div>
 
     <SectionHeader title="Today" />
