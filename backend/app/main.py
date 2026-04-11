@@ -36,6 +36,7 @@ logging.basicConfig(
 )
 for _noisy in ("tinytuya", "httpcore", "httpx"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
+logging.getLogger("app.services.discovery.tuya_discovery").setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 

@@ -339,6 +339,11 @@ async def _tcp_scan_and_match(subnet: str, known_devices: list) -> dict[str, dic
         match = await _identify_device_at_ip(ip, known_devices)
         if match:
             id_to_scan[match["gwId"]] = {"ip": ip, "version": match["version"]}
+        else:
+            logger.info(
+                "TCP scan: port 6668 open at %s but no known device matched "
+                "(stale key, unknown device, or unsupported protocol version)", ip,
+            )
 
     await asyncio.gather(*[probe(ip) for ip in open_ips])
     logger.info("TCP scan matched %d / %d device(s)", len(id_to_scan), len(open_ips))
@@ -422,8 +427,20 @@ async def _identify_device_at_ip(ip: str, devices: list) -> dict | None:
                         device.name, device.raw_id, ip, version,
                     )
                     return {"gwId": device.raw_id, "version": str(version)}
-            except Exception:
-                pass
+                logger.debug(
+                    "TCP scan: no dps from %s at %s v%s → %s",
+                    device.raw_id, ip, version, result,
+                )
+            except asyncio.TimeoutError:
+                logger.debug(
+                    "TCP scan: timeout probing %s at %s v%s",
+                    device.raw_id, ip, version,
+                )
+            except Exception as exc:
+                logger.debug(
+                    "TCP scan: error probing %s at %s v%s: %s",
+                    device.raw_id, ip, version, exc,
+                )
 
     return None
 
