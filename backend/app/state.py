@@ -13,6 +13,7 @@ from fastapi import Request
 
 if TYPE_CHECKING:
     from app.routers.ws import ConnectionManager
+    from app.services.modbus import InverterData
     from app.services.mqtt import MQTTClient
 
 
@@ -30,6 +31,7 @@ class AppState:
     mqtt_client: MQTTClient | None = None
     ws_manager: ConnectionManager | None = None
     topic_map: dict[str, TopicMapEntry] = field(default_factory=dict)
+    latest_readings: dict[str, InverterData] = field(default_factory=dict)
 
 
 def get_app_state(request: Request) -> AppState:

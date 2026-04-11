@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, SmallInteger, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -9,26 +9,17 @@ class Base(DeclarativeBase):
     pass
 
 
-class InverterReading(Base):
-    __tablename__ = "inverter_readings"
+class InverterDailyStat(Base):
+    __tablename__ = "inverter_daily_stats"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
-    )
-    inverter_id: Mapped[str] = mapped_column(String(16), index=True)
-    pv_power_w: Mapped[float] = mapped_column(Float)
-    pv_string1_w: Mapped[float] = mapped_column(Float)
-    pv_string2_w: Mapped[float] = mapped_column(Float)
-    battery_soc_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
-    battery_power_w: Mapped[float | None] = mapped_column(Float, nullable=True)
-    battery_running_state: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    grid_power_w: Mapped[float | None] = mapped_column(Float, nullable=True)
-    pv_yield_today_kwh: Mapped[float] = mapped_column(Float)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    inverter_id: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    hour: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    pv_yield_today_kwh: Mapped[float] = mapped_column(Float, nullable=False)
     feed_in_today_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
     grid_buy_today_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
-    inverter_temp_c: Mapped[float] = mapped_column(Float)
-    grid_frequency_hz: Mapped[float] = mapped_column(Float)
 
 
 class MeterReading(Base):

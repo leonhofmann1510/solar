@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 
 class ReadingOut(BaseModel):
-    id: int
+    id: int | None = None
     timestamp: datetime
     inverter_id: str
     pv_power_w: float
@@ -162,3 +162,21 @@ class DeviceActionRequest(BaseModel):
 
 class TuyaLoginStart(BaseModel):
     user_code: str
+
+
+# --- Stats ---
+
+
+class TodayStatOut(BaseModel):
+    yield_kwh: float
+    feed_in_kwh: float
+    grid_buy_kwh: float
+    self_consumption_kwh: float
+
+
+class DailyStatOut(BaseModel):
+    date: date
+    yield_kwh: float
+    feed_in_kwh: float
+    grid_buy_kwh: float
+    self_consumption_kwh: float

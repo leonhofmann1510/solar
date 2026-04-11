@@ -96,18 +96,40 @@ async def get_readings(
 
     tz = app_svc.get("timezone") or "UTC"
 
-    # Delta per bucket: how much kWh changed within the bucket
-    query = text("""
-        SELECT
-            to_char(date_trunc(:trunc, timestamp AT TIME ZONE :tz), :fmt) AS label,
-            date_trunc(:trunc, timestamp AT TIME ZONE :tz)                AS bucket,
-            MAX(consumption_kwh) - MIN(consumption_kwh)                   AS consumption_kwh,
-            MAX(feed_in_kwh)     - MIN(feed_in_kwh)                       AS feed_in_kwh
-        FROM meter_readings
-        WHERE timestamp >= :since
-        GROUP BY bucket
-        ORDER BY bucket
-    """)
+    if view == "day":
+        # Hourly storage: one row per hour, so MAX-MIN within each bucket is always 0.
+        # Use LAG to compute the delta between consecutive hourly snapshots.
+        query = text("""
+            WITH pts AS (
+                SELECT
+                    date_trunc('hour', timestamp AT TIME ZONE :tz) AS bucket,
+                    to_char(date_trunc('hour', timestamp AT TIME ZONE :tz), :fmt) AS label,
+                    MAX(consumption_kwh) AS c,
+                    MAX(feed_in_kwh)     AS f
+                FROM meter_readings
+                WHERE timestamp >= :since
+                GROUP BY date_trunc('hour', timestamp AT TIME ZONE :tz)
+            )
+            SELECT
+                label,
+                c - LAG(c) OVER (ORDER BY bucket) AS consumption_kwh,
+                f - LAG(f) OVER (ORDER BY bucket) AS feed_in_kwh
+            FROM pts
+            ORDER BY bucket
+        """)
+    else:
+        # week/month/year: multiple rows per bucket → MAX-MIN still works correctly
+        query = text("""
+            SELECT
+                to_char(date_trunc(:trunc, timestamp AT TIME ZONE :tz), :fmt) AS label,
+                date_trunc(:trunc, timestamp AT TIME ZONE :tz)                AS bucket,
+                MAX(consumption_kwh) - MIN(consumption_kwh)                   AS consumption_kwh,
+                MAX(feed_in_kwh)     - MIN(feed_in_kwh)                       AS feed_in_kwh
+            FROM meter_readings
+            WHERE timestamp >= :since
+            GROUP BY bucket
+            ORDER BY bucket
+        """)
 
     async with async_session() as session:
         result = await session.execute(query, {"trunc": trunc, "fmt": fmt, "since": since, "tz": tz})

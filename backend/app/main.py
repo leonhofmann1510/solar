@@ -14,7 +14,7 @@ from sqlalchemy import select, text
 from app.config import settings
 from app.database import async_session, engine
 from app.models import Rule
-from app.routers import app_settings, devices, meter, readings, rules
+from app.routers import app_settings, devices, meter, readings, rules, stats
 from app.routers.ws import ConnectionManager
 from app.routers.ws import router as ws_router
 from app.services.device_poller import poll_device_states
@@ -113,7 +113,7 @@ async def _run_migrations() -> None:
         ))
         if not has_alembic:
             has_tables = await conn.scalar(text(
-                "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='inverter_readings')"
+                "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='meter_readings')"
             ))
             if has_tables:
                 logger.info("Untracked DB detected — stamping at revision 004 before upgrade")
@@ -162,7 +162,7 @@ async def lifespan(app: FastAPI):
 
     # Start background tasks
     tasks = [
-        asyncio.create_task(poll_loop(app_state.mqtt_client, app_state.ws_manager)),
+        asyncio.create_task(poll_loop(app_state)),
         asyncio.create_task(poll_device_states(app_state.ws_manager)),
         asyncio.create_task(_cleanup_loop()),
         asyncio.create_task(tuya_ip_refresh_loop()),
@@ -196,4 +196,5 @@ app.include_router(rules.router)
 app.include_router(devices.router)
 app.include_router(meter.router)
 app.include_router(app_settings.router)
+app.include_router(stats.router)
 app.include_router(ws_router)
