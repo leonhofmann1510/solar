@@ -185,6 +185,13 @@ class SungrowModbus:
             )
             return None
 
+        if len(resp.registers) < count:
+            logger.warning(
+                "[%s] Truncated Modbus response (addr=%d expected=%d got=%d) — stale connection?",
+                self.inverter_id, min_addr, count, len(resp.registers),
+            )
+            return None
+
         return {min_addr + i: v for i, v in enumerate(resp.registers)}
 
     def _read_grouped(self, addresses: list[int], holding: bool) -> dict[int, int] | None:
