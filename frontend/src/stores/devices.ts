@@ -58,6 +58,16 @@ export const useDevicesStore = defineStore('devices', () => {
     return await devicesApi.action(id, payload)
   }
 
+  async function renameCapability(deviceId: number, capKey: string, displayName: string) {
+    const updated = await devicesApi.renameCapability(deviceId, capKey, displayName)
+    const device = devices.value.find((d) => d.id === deviceId)
+    if (device) {
+      const cap = device.capabilities.find((c) => c.key === capKey)
+      if (cap) cap.display_name = updated.display_name
+    }
+    return updated
+  }
+
   async function discoverMdns() {
     const result = await devicesApi.discoverMdns()
     if (result.discovered > 0) await fetchPending()
@@ -105,6 +115,7 @@ export const useDevicesStore = defineStore('devices', () => {
     update,
     remove,
     sendAction,
+    renameCapability,
     discoverMdns,
     scanTuyaNetwork,
     updateDeviceState,

@@ -2,6 +2,7 @@ import client from './client'
 import type {
   Device,
   DeviceActionRequest,
+  DeviceCapability,
   DeviceConfirm,
   DeviceUpdate,
 } from '@/types/device'
@@ -77,6 +78,14 @@ export const devicesApi = {
 
   async readRawDps(id: number): Promise<{ device_id: number; raw_dps: Record<string, unknown> }> {
     const { data } = await client.post(`/api/devices/${id}/read`)
+    return data
+  },
+
+  async renameCapability(deviceId: number, key: string, displayName: string): Promise<DeviceCapability> {
+    const { data } = await client.patch<DeviceCapability>(
+      `/api/devices/${deviceId}/capabilities/${key}`,
+      { display_name: displayName },
+    )
     return data
   },
 }

@@ -37,6 +37,8 @@ const saving = ref(false)
 const testing = ref<string | null>(null)
 const testResult = ref<string | null>(null)
 const testValues = reactive<Record<string, number | string>>({})
+const renamingCapKey = ref<string | null>(null)
+const renamingCapValue = ref('')
 
 function getTestValue(capKey: string, dataType: string, minValue: number | null): number | string {
   if (testValues[capKey] !== undefined) return testValues[capKey]
@@ -106,6 +108,24 @@ function getStateValue(capKey: string): string {
   if (state.value_numeric !== null) return String(state.value_numeric)
   if (state.value_string !== null) return state.value_string
   return '\u2014'
+}
+
+function startRename(capKey: string, currentName: string) {
+  renamingCapKey.value = capKey
+  renamingCapValue.value = currentName
+}
+
+async function commitRename(capKey: string) {
+  if (!props.device || renamingCapKey.value !== capKey) return
+  const name = renamingCapValue.value.trim()
+  if (name) {
+    await store.renameCapability(props.device.id, capKey, name)
+  }
+  renamingCapKey.value = null
+}
+
+function cancelRename() {
+  renamingCapKey.value = null
 }
 
 function getStateFreshness(capKey: string): 'green' | 'amber' | 'grey' {
@@ -194,11 +214,31 @@ const actionCapabilities = computed(() =>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="cap in device.capabilities" :key="cap.key" class="border-b border-sf-border last:border-0">
+              <tr v-for="cap in device.capabilities" :key="cap.key" class="group border-b border-sf-border last:border-0">
                 <td class="py-2.5">
                   <div class="flex items-center gap-2">
                     <StatusDot :color="getStateFreshness(cap.key)" />
-                    <span class="text-sf-text-1">{{ cap.display_name || cap.key }}</span>
+                    <template v-if="renamingCapKey === cap.key">
+                      <InputText
+                        v-model="renamingCapValue"
+                        class="text-sm h-7 py-0 px-2"
+                        style="width: 140px"
+                        autofocus
+                        @keydown.enter="commitRename(cap.key)"
+                        @keydown.esc="cancelRename"
+                        @blur="commitRename(cap.key)"
+                      />
+                    </template>
+                    <template v-else>
+                      <span class="text-sf-text-1">{{ cap.display_name || cap.key }}</span>
+                      <button
+                        class="text-sf-text-3 hover:text-sf-text-1 transition-colors opacity-0 group-hover:opacity-100"
+                        title="Rename"
+                        @click="startRename(cap.key, cap.display_name || cap.key)"
+                      >
+                        <i class="pi pi-pencil text-xs" />
+                      </button>
+                    </template>
                   </div>
                 </td>
                 <td class="py-2.5">

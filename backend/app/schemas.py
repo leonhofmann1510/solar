@@ -116,6 +116,10 @@ class DeviceCapabilityOut(DeviceCapabilitySchema):
     model_config = {"from_attributes": True}
 
 
+class CapabilityRename(BaseModel):
+    display_name: str
+
+
 class DeviceStateOut(BaseModel):
     capability_key: str
     value_boolean: bool | None

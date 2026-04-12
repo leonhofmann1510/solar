@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_session
 from app.models import Device, DeviceCapability, DeviceState
 from app.schemas import (
+    CapabilityRename,
     DeviceActionRequest,
     DeviceCapabilityOut,
     DeviceCapabilitySchema,
@@ -228,6 +229,29 @@ async def update_capability(
     for field, value in body.model_dump().items():
         setattr(cap, field, value)
 
+    await session.commit()
+    await session.refresh(cap)
+    return cap
+
+
+@router.patch("/{device_id}/capabilities/{key}", response_model=DeviceCapabilityOut)
+async def rename_capability(
+    device_id: int,
+    key: str,
+    body: CapabilityRename,
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(
+        select(DeviceCapability).where(
+            DeviceCapability.device_id == device_id,
+            DeviceCapability.key == key,
+        )
+    )
+    cap = result.scalar_one_or_none()
+    if not cap:
+        raise HTTPException(404, "Capability not found")
+
+    cap.display_name = body.display_name
     await session.commit()
     await session.refresh(cap)
     return cap

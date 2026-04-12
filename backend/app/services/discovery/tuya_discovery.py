@@ -580,13 +580,14 @@ def _get_default_capabilities(category: str) -> list[dict]:
 
 
 async def _refresh_capabilities_from_dps(db, device: Device, dps: dict) -> bool:
-    """Replace device capabilities with ones derived from live DPS if they don't match.
+    """Add capabilities for any DPS datapoints not yet tracked.
 
-    Called after every successful TCP scan so that devices that received wrong
-    default capabilities (e.g. category fallback) are self-corrected once we
-    can actually talk to the device and read its real datapoints.
+    Called after every successful TCP scan so that devices whose capabilities
+    were auto-generated from a wrong category default get the real DPs added.
+    Existing capabilities are never deleted so that user-renamed display names
+    are preserved.
 
-    Returns True if capabilities were changed.
+    Returns True if new capabilities were added.
     """
     actual_dp_ids = {int(k) for k in dps.keys()}
     if not actual_dp_ids:
@@ -598,16 +599,16 @@ async def _refresh_capabilities_from_dps(db, device: Device, dps: dict) -> bool:
     existing_caps = caps_result.scalars().all()
     existing_dp_ids = {c.tuya_dp_id for c in existing_caps if c.tuya_dp_id is not None}
 
-    # All actual DPs already covered — nothing to fix
-    if actual_dp_ids.issubset(existing_dp_ids):
+    missing_dp_ids = actual_dp_ids - existing_dp_ids
+    if not missing_dp_ids:
         return False
 
-    # Mismatch: replace all capabilities with live-derived ones
-    for cap in existing_caps:
-        await db.delete(cap)
-
+    # Only add missing DPs — never delete existing ones (preserves user renames)
     for dp_id_raw, value in dps.items():
         dp_id = int(dp_id_raw)
+        if dp_id not in missing_dp_ids:
+            continue
+
         if isinstance(value, bool):
             data_type = "boolean"
         elif isinstance(value, (int, float)):
@@ -626,9 +627,8 @@ async def _refresh_capabilities_from_dps(db, device: Device, dps: dict) -> bool:
         db.add(cap)
 
     logger.info(
-        "Refreshed capabilities for %s (%s): DP IDs %s → %s",
-        device.name, device.raw_id,
-        sorted(existing_dp_ids), sorted(actual_dp_ids),
+        "Added capabilities for %s (%s): new DP IDs %s",
+        device.name, device.raw_id, sorted(missing_dp_ids),
     )
     return True
 
