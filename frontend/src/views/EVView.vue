@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -25,18 +25,37 @@ const evStore = useEVStore()
 const sessions = ref<EVSession[]>([])
 const loading = ref(true)
 
+// ── Live ticker ────────────────────────────────────────────────────────────
+
+const now = ref(Date.now())
+let ticker: ReturnType<typeof setInterval> | null = null
+
 onMounted(async () => {
+  ticker = setInterval(() => { now.value = Date.now() }, 1000)
   await Promise.all([evStore.fetchStatus(), evStore.fetchSummary()])
   sessions.value = await getEVSessions(50)
   loading.value = false
+})
+
+onUnmounted(() => {
+  if (ticker) clearInterval(ticker)
 })
 
 // ── Live charging banner ───────────────────────────────────────────────────
 
 const activeSession = computed(() => evStore.status.active_session)
 
-function formatDuration(solar: number, grid: number): string {
-  const total = solar + grid
+const liveDurationSeconds = computed(() => {
+  if (!activeSession.value?.started_at) return 0
+  return Math.max(0, Math.floor((now.value - new Date(activeSession.value.started_at).getTime()) / 1000))
+})
+
+const liveKwh = computed(() => {
+  if (!activeSession.value) return 0
+  return activeSession.value.charging_power_kw * (liveDurationSeconds.value / 3600)
+})
+
+function formatSeconds(total: number): string {
   const h = Math.floor(total / 3600)
   const m = Math.floor((total % 3600) / 60)
   const s = total % 60
@@ -177,9 +196,9 @@ function sessionKm(s: EVSession): string {
       <div class="flex-1">
         <p class="text-sm font-semibold text-sf-green-700">Currently charging</p>
         <p class="text-xs text-sf-green-600 mt-0.5">
-          Duration: {{ formatDuration(activeSession.duration_solar_seconds, activeSession.duration_grid_seconds) }}
+          Duration: {{ formatSeconds(liveDurationSeconds) }}
           &nbsp;·&nbsp;
-          Est. {{ (activeSession.charging_power_kw * ((activeSession.duration_solar_seconds + activeSession.duration_grid_seconds) / 3600)).toFixed(2) }} kWh
+          Est. {{ liveKwh.toFixed(2) }} kWh
         </p>
       </div>
     </div>

@@ -151,11 +151,17 @@ async def poll_loop(app_state: AppState) -> None:
                         now_ts = datetime.now(tz=timezone.utc)
 
                         if is_charging and not _ev_was_charging:
-                            # SESSION START
+                            # SESSION START — close any orphaned open sessions first (e.g. from previous backend run)
                             _ev_session_solar_seconds = 0
                             _ev_session_grid_seconds = 0
                             _ev_session_start = now_ts
                             async with async_session() as db:
+                                orphans = await db.execute(
+                                    select(EVSession).where(EVSession.ended_at.is_(None))
+                                )
+                                for orphan in orphans.scalars().all():
+                                    orphan.ended_at = now_ts
+                                    logger.info("Closed orphaned EV session id=%d", orphan.id)
                                 session_row = EVSession(
                                     started_at=now_ts,
                                     charging_power_kw=charging_power_kw,
