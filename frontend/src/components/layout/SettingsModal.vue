@@ -2,20 +2,77 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
+import InputNumber from 'primevue/inputnumber'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 import { useTuyaSetup } from '@/composables/useTuyaSetup'
 import { useMeterStore } from '@/stores/meter'
 import { useAppSettingsStore } from '@/stores/appSettings'
+import { useEVStore } from '@/stores/ev'
+import { devicesApi } from '@/api/devices'
+import { getAppSettings, patchAppSettings } from '@/api/app_settings'
+import type { Device } from '@/types/device'
 import QRCode from 'qrcode'
 
 const meterStore = useMeterStore()
 const appSettingsStore = useAppSettingsStore()
-onMounted(() => {
+const evStore = useEVStore()
+
+const allDevices = ref<Device[]>([])
+const evSettings = ref({
+  wallboxDeviceId: null as number | null,
+  capabilityKey: '',
+  chargingValue: 'charging',
+  chargingPowerKw: 11.0,
+  batteryThresholdPct: 15.0,
+  efficiencyKmPerKwh: 6.0,
+  costSolar: 0.5,
+  costGrid: 4.5,
+  costGas: 10.0,
+})
+const evSaving = ref(false)
+
+onMounted(async () => {
   meterStore.fetchStatus()
   appSettingsStore.fetch()
+  evStore.fetchStatus()
+  allDevices.value = await devicesApi.getAll()
 })
+
+async function loadEVSettingsFromAPI() {
+  const data = await getAppSettings()
+  evSettings.value.wallboxDeviceId = data.ev_wallbox_device_id ?? null
+  evSettings.value.capabilityKey = data.ev_charging_capability_key ?? ''
+  evSettings.value.chargingValue = data.ev_charging_value ?? 'charging'
+  evSettings.value.chargingPowerKw = data.ev_charging_power_kw ?? 11.0
+  evSettings.value.batteryThresholdPct = data.ev_battery_threshold_pct ?? 15.0
+  evSettings.value.efficiencyKmPerKwh = data.ev_efficiency_km_per_kwh ?? 6.0
+  evSettings.value.costSolar = data.ev_cost_per_100km_solar_eur ?? 0.5
+  evSettings.value.costGrid = data.ev_cost_per_100km_grid_eur ?? 4.5
+  evSettings.value.costGas = data.ev_cost_per_100km_gas_eur ?? 10.0
+}
+
+async function saveEVSettings() {
+  evSaving.value = true
+  try {
+    await patchAppSettings({
+      ev_wallbox_device_id: evSettings.value.wallboxDeviceId,
+      ev_charging_capability_key: evSettings.value.capabilityKey,
+      ev_charging_value: evSettings.value.chargingValue,
+      ev_charging_power_kw: evSettings.value.chargingPowerKw,
+      ev_battery_threshold_pct: evSettings.value.batteryThresholdPct,
+      ev_efficiency_km_per_kwh: evSettings.value.efficiencyKmPerKwh,
+      ev_cost_per_100km_solar_eur: evSettings.value.costSolar,
+      ev_cost_per_100km_grid_eur: evSettings.value.costGrid,
+      ev_cost_per_100km_gas_eur: evSettings.value.costGas,
+    })
+  } finally {
+    evSaving.value = false
+  }
+}
+
+const confirmedDevices = computed(() => allDevices.value.filter((d) => d.confirmed))
 
 const timezones = Intl.supportedValuesOf('timeZone')
 
@@ -37,6 +94,7 @@ const sections = [
   { key: 'inverters', label: 'Inverters', icon: 'pi pi-server' },
   { key: 'mqtt', label: 'MQTT', icon: 'pi pi-share-alt' },
   { key: 'meter', label: 'Smart Meter', icon: 'pi pi-chart-line' },
+  { key: 'ev', label: 'EV Charging', icon: 'pi pi-car' },
   { key: 'tuya', label: 'Tuya Setup', icon: 'pi pi-qrcode' },
   { key: 'about', label: 'About', icon: 'pi pi-info-circle' },
 ] as const
@@ -61,6 +119,7 @@ watch(dialogVisible, (v) => {
 
 function selectSection(key: SectionKey) {
   activeSection.value = key
+  if (key === 'ev') loadEVSettingsFromAPI()
 }
 
 function goBack() {
@@ -243,6 +302,82 @@ function handleTuyaReset() {
           <router-link v-if="meterStore.status.enabled" to="/meter" @click="dialogVisible = false">
             <Button label="Open Meter Page" icon="pi pi-chart-line" severity="secondary" class="w-full" />
           </router-link>
+        </div>
+
+        <!-- EV Charging -->
+        <div v-if="activeSection === 'ev'" class="space-y-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1">Status</label>
+              <p class="text-sm text-sf-text-1">EV charging monitoring</p>
+            </div>
+            <Tag
+              :value="evStore.status.enabled ? 'Enabled' : 'Disabled'"
+              :severity="evStore.status.enabled ? 'success' : 'secondary'"
+            />
+          </div>
+
+          <template v-if="evStore.status.enabled">
+            <div>
+              <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Wallbox Device</label>
+              <Select
+                v-model="evSettings.wallboxDeviceId"
+                :options="confirmedDevices"
+                optionLabel="name"
+                optionValue="id"
+                placeholder="Select device…"
+                class="w-full text-sm"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Capability Key</label>
+              <InputText v-model="evSettings.capabilityKey" placeholder="e.g. charging_status" class="w-full text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Charging Value (string to match)</label>
+              <InputText v-model="evSettings.chargingValue" placeholder="e.g. charging" class="w-full text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Charging Power (kW)</label>
+              <InputNumber v-model="evSettings.chargingPowerKw" :min="0.1" :max="350" :step="0.5" :minFractionDigits="1" class="w-full text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Battery Threshold for Solar (%)</label>
+              <InputNumber v-model="evSettings.batteryThresholdPct" :min="0" :max="100" :step="5" class="w-full text-sm" />
+              <p class="text-xs text-sf-text-3 mt-1">Battery SoC above this → counts as solar charging.</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Efficiency (km/kWh)</label>
+              <InputNumber v-model="evSettings.efficiencyKmPerKwh" :min="1" :max="20" :step="0.5" :minFractionDigits="1" class="w-full text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Prices</label>
+              <div class="space-y-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-sf-text-2 w-28">Solar (€/100km)</span>
+                  <InputNumber v-model="evSettings.costSolar" :min="0" :step="0.1" :minFractionDigits="2" class="flex-1 text-sm" />
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-sf-text-2 w-28">Grid (€/100km)</span>
+                  <InputNumber v-model="evSettings.costGrid" :min="0" :step="0.1" :minFractionDigits="2" class="flex-1 text-sm" />
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-sf-text-2 w-28">Gas (€/100km)</span>
+                  <InputNumber v-model="evSettings.costGas" :min="0" :step="0.1" :minFractionDigits="2" class="flex-1 text-sm" />
+                </div>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <Button label="Save" icon="pi pi-check" :loading="evSaving" @click="saveEVSettings" class="flex-1" />
+              <router-link to="/ev" @click="dialogVisible = false" class="flex-1">
+                <Button label="Go to EV Dashboard" icon="pi pi-car" severity="secondary" class="w-full" />
+              </router-link>
+            </div>
+          </template>
+
+          <p v-else class="text-xs text-sf-text-3">
+            Enable EV charging via <code class="bg-slate-100 px-1 rounded">EV_CHARGING_ENABLED=true</code> environment variable on the server.
+          </p>
         </div>
 
         <!-- Tuya Setup -->

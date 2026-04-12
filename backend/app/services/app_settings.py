@@ -17,6 +17,16 @@ _SETTINGS_FILE = Path(settings.app_settings_path)
 
 _DEFAULTS: dict = {
     "timezone": "UTC",
+    # EV Charging
+    "ev_wallbox_device_id": None,
+    "ev_charging_capability_key": "",
+    "ev_charging_value": "charging",
+    "ev_charging_power_kw": 11.0,
+    "ev_battery_threshold_pct": 15.0,
+    "ev_efficiency_km_per_kwh": 6.0,
+    "ev_cost_per_100km_solar_eur": 0.5,
+    "ev_cost_per_100km_grid_eur": 4.5,
+    "ev_cost_per_100km_gas_eur": 10.0,
 }
 
 

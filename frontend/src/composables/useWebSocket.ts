@@ -1,9 +1,11 @@
 import { ref, onUnmounted } from 'vue'
 import type { InverterReading } from '@/types/reading'
+import { useEVStore } from '@/stores/ev'
 
 export function useWebSocket() {
   const latestReading = ref<InverterReading | null>(null)
   const connected = ref(false)
+  const evStore = useEVStore()
 
   let socket: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -23,6 +25,11 @@ export function useWebSocket() {
         // Only update latestReading for inverter readings (no "event" field)
         if (!msg.event) {
           latestReading.value = msg
+        } else if (msg.event === 'ev_status') {
+          evStore.pushLiveStatus(msg)
+        } else if (msg.event === 'ev_session_ended') {
+          evStore.fetchStatus()
+          evStore.fetchSummary()
         }
       } catch {
         console.warn('[WS] Could not parse message', event.data)

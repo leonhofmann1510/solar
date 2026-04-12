@@ -33,6 +33,11 @@ const router = createRouter({
       name: 'meter',
       component: () => import('@/views/MeterView.vue'),
     },
+    {
+      path: '/ev',
+      name: 'ev',
+      component: () => import('@/views/EVView.vue'),
+    },
   ],
 })
 

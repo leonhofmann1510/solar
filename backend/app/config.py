@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     smart_meter_enabled: bool = False
     smart_meter_ip: str = ""
 
+    # EV Charging
+    ev_charging_enabled: bool = False
+
     # Discovery
     zigbee2mqtt_bridge_topic: str = "zigbee2mqtt/bridge/devices"
     mdns_scan_timeout_seconds: int = 10

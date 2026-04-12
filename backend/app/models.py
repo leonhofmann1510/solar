@@ -123,6 +123,28 @@ class DeviceCapability(Base):
     device: Mapped["Device"] = relationship(back_populates="capabilities")
 
 
+class EVSession(Base):
+    __tablename__ = "ev_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    kwh_total: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    kwh_solar: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    kwh_grid: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    duration_solar_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duration_grid_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Price snapshot
+    charging_power_kw: Mapped[float] = mapped_column(Float, nullable=False)
+    efficiency_km_per_kwh: Mapped[float] = mapped_column(Float, nullable=False)
+    cost_per_100km_solar_eur: Mapped[float] = mapped_column(Float, nullable=False)
+    cost_per_100km_grid_eur: Mapped[float] = mapped_column(Float, nullable=False)
+    cost_per_100km_gas_eur: Mapped[float] = mapped_column(Float, nullable=False)
+    # Computed at session end
+    cost_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    savings_vs_gas_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+
 class DeviceState(Base):
     __tablename__ = "device_states"
     __table_args__ = (

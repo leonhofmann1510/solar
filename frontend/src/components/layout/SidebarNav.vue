@@ -2,11 +2,16 @@
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMeterStore } from '@/stores/meter'
+import { useEVStore } from '@/stores/ev'
 
 const route = useRoute()
 const meterStore = useMeterStore()
+const evStore = useEVStore()
 
-onMounted(() => meterStore.fetchStatus())
+onMounted(() => {
+  meterStore.fetchStatus()
+  evStore.fetchStatus()
+})
 
 const mainItems = [
   { to: '/', label: 'Dashboard', icon: 'pi pi-home' },
@@ -14,11 +19,10 @@ const mainItems = [
   { to: '/rules', label: 'Rules', icon: 'pi pi-bolt' },
 ]
 
-const otherItems = computed(() =>
-  meterStore.status.enabled
-    ? [{ to: '/meter', label: 'Smart Meter', icon: 'pi pi-chart-line' }]
-    : [],
-)
+const otherItems = computed(() => [
+  ...(meterStore.status.enabled ? [{ to: '/meter', label: 'Smart Meter', icon: 'pi pi-chart-line' }] : []),
+  ...(evStore.status.enabled ? [{ to: '/ev', label: 'EV Charging', icon: 'pi pi-car' }] : []),
+])
 
 function isActive(to: string) {
   if (to === '/') return route.path === '/'

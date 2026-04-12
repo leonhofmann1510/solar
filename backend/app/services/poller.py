@@ -6,11 +6,12 @@ from dataclasses import asdict
 from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.config import settings
 from app.database import async_session
-from app.models import InverterDailyStat, MeterReading, SelfSufficiencyHistory
+from app.models import DeviceState, EVSession, InverterDailyStat, MeterReading, SelfSufficiencyHistory
+from app.services import app_settings as app_svc
 from app.services.meter import BitshakeSmartMeter, MeterData
 from app.services.modbus import InverterData, SungrowModbus, load_inverter_configs
 from app.services.rules_engine import run_engine
@@ -25,6 +26,13 @@ _last_save_hour: int | None = None
 _prev_inverter_readings: list[InverterData] = []
 _prev_meter_data: MeterData | None = None
 
+# EV charging state
+_ev_active_session_id: int | None = None
+_ev_was_charging: bool = False
+_ev_session_solar_seconds: int = 0
+_ev_session_grid_seconds: int = 0
+_ev_session_start: datetime | None = None
+
 
 def _build_inverters() -> list[SungrowModbus]:
     configs = load_inverter_configs(settings.inverters_config_path)
@@ -34,6 +42,7 @@ def _build_inverters() -> list[SungrowModbus]:
 async def poll_loop(app_state: AppState) -> None:
     """Background polling loop — reads inverters + smart meter, stores data, evaluates rules."""
     global _last_save_hour, _prev_inverter_readings, _prev_meter_data
+    global _ev_active_session_id, _ev_was_charging, _ev_session_solar_seconds, _ev_session_grid_seconds, _ev_session_start
 
     mqtt_client = app_state.mqtt_client
     ws_manager = app_state.ws_manager
@@ -94,6 +103,130 @@ async def poll_loop(app_state: AppState) -> None:
                             "consumption_kwh": meter_data.consumption_kwh,
                             "feed_in_kwh": meter_data.feed_in_kwh,
                         })
+
+                # EV charging state machine
+                if settings.ev_charging_enabled:
+                    try:
+                        ev_cfg = app_svc.get_all()
+                        wallbox_device_id = ev_cfg.get("ev_wallbox_device_id")
+                        capability_key = ev_cfg.get("ev_charging_capability_key", "")
+                        charging_value = ev_cfg.get("ev_charging_value", "charging")
+                        charging_power_kw = float(ev_cfg.get("ev_charging_power_kw", 11.0))
+                        battery_threshold = float(ev_cfg.get("ev_battery_threshold_pct", 15.0))
+                        efficiency = float(ev_cfg.get("ev_efficiency_km_per_kwh", 6.0))
+                        cost_solar = float(ev_cfg.get("ev_cost_per_100km_solar_eur", 0.5))
+                        cost_grid = float(ev_cfg.get("ev_cost_per_100km_grid_eur", 4.5))
+                        cost_gas = float(ev_cfg.get("ev_cost_per_100km_gas_eur", 10.0))
+
+                        is_charging = False
+                        if wallbox_device_id and capability_key:
+                            async with async_session() as db:
+                                ds_result = await db.execute(
+                                    select(DeviceState).where(
+                                        DeviceState.device_id == wallbox_device_id,
+                                        DeviceState.capability_key == capability_key,
+                                    )
+                                )
+                                ds = ds_result.scalar_one_or_none()
+                                if ds is not None:
+                                    is_charging = (ds.value_string == charging_value)
+
+                        # Determine solar vs grid
+                        battery_soc: float | None = None
+                        if readings:
+                            battery_soc = readings[0].battery_soc_pct
+                        is_solar = battery_soc is not None and battery_soc > battery_threshold
+
+                        now_ts = datetime.now(tz=timezone.utc)
+
+                        if is_charging and not _ev_was_charging:
+                            # SESSION START
+                            _ev_session_solar_seconds = 0
+                            _ev_session_grid_seconds = 0
+                            _ev_session_start = now_ts
+                            async with async_session() as db:
+                                session_row = EVSession(
+                                    started_at=now_ts,
+                                    charging_power_kw=charging_power_kw,
+                                    efficiency_km_per_kwh=efficiency,
+                                    cost_per_100km_solar_eur=cost_solar,
+                                    cost_per_100km_grid_eur=cost_grid,
+                                    cost_per_100km_gas_eur=cost_gas,
+                                )
+                                db.add(session_row)
+                                await db.commit()
+                                await db.refresh(session_row)
+                                _ev_active_session_id = session_row.id
+                            logger.info("EV session started (id=%d)", _ev_active_session_id)
+
+                        elif is_charging and _ev_was_charging:
+                            # ONGOING — accumulate time
+                            interval = settings.poll_interval_seconds
+                            if is_solar:
+                                _ev_session_solar_seconds += interval
+                            else:
+                                _ev_session_grid_seconds += interval
+
+                        elif not is_charging and _ev_was_charging:
+                            # SESSION END
+                            if _ev_active_session_id is not None:
+                                total_seconds = _ev_session_solar_seconds + _ev_session_grid_seconds
+                                if total_seconds > 0:
+                                    duration_hours = total_seconds / 3600
+                                    kwh_total = charging_power_kw * duration_hours
+                                    kwh_solar = kwh_total * (_ev_session_solar_seconds / total_seconds)
+                                    kwh_grid = kwh_total * (_ev_session_grid_seconds / total_seconds)
+                                    km_solar = kwh_solar * efficiency
+                                    km_grid = kwh_grid * efficiency
+                                    km_total = kwh_total * efficiency
+                                    cost_eur = (km_solar / 100 * cost_solar) + (km_grid / 100 * cost_grid)
+                                    gas_cost = km_total / 100 * cost_gas
+                                    savings = gas_cost - cost_eur
+                                else:
+                                    kwh_total = kwh_solar = kwh_grid = km_solar = km_grid = km_total = 0.0
+                                    cost_eur = savings = 0.0
+
+                                async with async_session() as db:
+                                    result = await db.execute(
+                                        select(EVSession).where(EVSession.id == _ev_active_session_id)
+                                    )
+                                    session_row = result.scalar_one_or_none()
+                                    if session_row:
+                                        session_row.ended_at = now_ts
+                                        session_row.kwh_total = round(kwh_total, 3)
+                                        session_row.kwh_solar = round(kwh_solar, 3)
+                                        session_row.kwh_grid = round(kwh_grid, 3)
+                                        session_row.duration_solar_seconds = _ev_session_solar_seconds
+                                        session_row.duration_grid_seconds = _ev_session_grid_seconds
+                                        session_row.cost_eur = round(cost_eur, 2)
+                                        session_row.savings_vs_gas_eur = round(savings, 2)
+                                        await db.commit()
+
+                                await ws_manager.broadcast({
+                                    "event": "ev_session_ended",
+                                    "session_id": _ev_active_session_id,
+                                })
+                                logger.info("EV session ended (id=%d, %.3f kWh)", _ev_active_session_id, kwh_total)
+
+                            _ev_active_session_id = None
+                            _ev_session_solar_seconds = 0
+                            _ev_session_grid_seconds = 0
+                            _ev_session_start = None
+
+                        # Broadcast current EV status on every cycle while charging
+                        if is_charging:
+                            await ws_manager.broadcast({
+                                "event": "ev_status",
+                                "is_charging": True,
+                                "session_id": _ev_active_session_id,
+                                "duration_solar_seconds": _ev_session_solar_seconds,
+                                "duration_grid_seconds": _ev_session_grid_seconds,
+                            })
+
+                        _ev_was_charging = is_charging
+
+                    except Exception:
+                        logger.exception("Error in EV state machine")
 
                 # Hourly save: persist previous hour's snapshots when the hour rolls over
                 if hour_changed:
