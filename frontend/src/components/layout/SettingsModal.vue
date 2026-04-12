@@ -32,6 +32,32 @@ const evSettings = ref({
   costGas: 10.0,
 })
 const evSaving = ref(false)
+const deviceStateLoading = ref(false)
+
+const wallboxDevice = computed(() =>
+  allDevices.value.find((d) => d.id === evSettings.value.wallboxDeviceId) ?? null
+)
+const wallboxCapabilities = computed(() => wallboxDevice.value?.capabilities ?? [])
+const wallboxCurrentState = computed(() => {
+  if (!evSettings.value.capabilityKey) return null
+  const state = wallboxDevice.value?.states.find(
+    (s) => s.capability_key === evSettings.value.capabilityKey
+  )
+  return state?.value_string ?? null
+})
+
+async function refreshWallboxDevice() {
+  if (!evSettings.value.wallboxDeviceId) return
+  deviceStateLoading.value = true
+  try {
+    const fresh = await devicesApi.getOne(evSettings.value.wallboxDeviceId)
+    const idx = allDevices.value.findIndex((d) => d.id === fresh.id)
+    if (idx !== -1) allDevices.value[idx] = fresh
+    else allDevices.value.push(fresh)
+  } finally {
+    deviceStateLoading.value = false
+  }
+}
 
 onMounted(async () => {
   meterStore.fetchStatus()
@@ -330,12 +356,65 @@ function handleTuyaReset() {
               />
             </div>
             <div>
-              <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Capability Key</label>
-              <InputText v-model="evSettings.capabilityKey" placeholder="e.g. charging_status" class="w-full text-sm" />
+              <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Capability (Data Point)</label>
+              <Select
+                v-model="evSettings.capabilityKey"
+                :options="wallboxCapabilities"
+                optionLabel="display_name"
+                optionValue="key"
+                placeholder="Select data point…"
+                :disabled="!evSettings.wallboxDeviceId"
+                class="w-full text-sm"
+              />
+              <p class="text-xs text-sf-text-3 mt-1">The data point that signals charging status. Select the wallbox device first.</p>
             </div>
+
+            <!-- Live state debug panel -->
+            <div v-if="evSettings.capabilityKey" class="rounded-lg border border-sf-border bg-slate-50 p-3 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-sf-text-2 uppercase tracking-wider">Live Device State</span>
+                <button
+                  @click="refreshWallboxDevice"
+                  :disabled="deviceStateLoading"
+                  class="flex items-center gap-1 text-xs text-sf-green-600 hover:text-sf-green-700 disabled:opacity-50"
+                >
+                  <i :class="deviceStateLoading ? 'pi pi-spin pi-spinner' : 'pi pi-refresh'" class="text-xs" />
+                  Refresh
+                </button>
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs text-sf-text-2 shrink-0">Current value:</span>
+                <div class="flex items-center gap-2">
+                  <code class="text-xs bg-white border border-sf-border rounded px-1.5 py-0.5 text-sf-text-1 max-w-[180px] truncate">
+                    {{ wallboxCurrentState ?? '— no data —' }}
+                  </code>
+                  <button
+                    v-if="wallboxCurrentState"
+                    @click="evSettings.chargingValue = wallboxCurrentState"
+                    class="text-xs text-sf-green-600 hover:text-sf-green-700 whitespace-nowrap"
+                    title="Use as charging value"
+                  >
+                    Use ↓
+                  </button>
+                </div>
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs text-sf-text-2 shrink-0">Match value:</span>
+                <code class="text-xs bg-white border border-sf-border rounded px-1.5 py-0.5 text-sf-text-1">{{ evSettings.chargingValue || '—' }}</code>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-sf-text-2">Detection:</span>
+                <Tag
+                  :value="wallboxCurrentState !== null && wallboxCurrentState === evSettings.chargingValue ? 'Would trigger ✓' : 'No match'"
+                  :severity="wallboxCurrentState !== null && wallboxCurrentState === evSettings.chargingValue ? 'success' : 'secondary'"
+                />
+              </div>
+            </div>
+
             <div>
               <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Charging Value (string to match)</label>
               <InputText v-model="evSettings.chargingValue" placeholder="e.g. charging" class="w-full text-sm" />
+              <p class="text-xs text-sf-text-3 mt-1">The exact value that means the car is charging. Use "Use ↓" above to fill from the live state.</p>
             </div>
             <div>
               <label class="block text-xs font-medium text-sf-text-2 uppercase tracking-wider mb-1.5">Charging Power (kW)</label>

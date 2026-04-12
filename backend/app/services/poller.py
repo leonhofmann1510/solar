@@ -130,6 +130,17 @@ async def poll_loop(app_state: AppState) -> None:
                                 ds = ds_result.scalar_one_or_none()
                                 if ds is not None:
                                     is_charging = (ds.value_string == charging_value)
+                                    logger.debug(
+                                        "EV poll: device=%s key=%r stored_value=%r match_value=%r → is_charging=%s",
+                                        wallbox_device_id, capability_key, ds.value_string, charging_value, is_charging,
+                                    )
+                                else:
+                                    logger.debug(
+                                        "EV poll: device=%s key=%r → no row in device_states (device not yet polled or wrong key)",
+                                        wallbox_device_id, capability_key,
+                                    )
+                        else:
+                            logger.debug("EV poll: skipped — wallbox_device_id=%s capability_key=%r", wallbox_device_id, capability_key)
 
                         # Determine solar vs grid
                         battery_soc: float | None = None

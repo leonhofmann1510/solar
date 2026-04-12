@@ -8,7 +8,7 @@ from sqlalchemy import select, func
 
 from app.config import settings
 from app.database import async_session
-from app.models import EVSession
+from app.models import DeviceState, EVSession
 from app.services import app_settings as app_svc
 
 router = APIRouter(prefix="/api/ev", tags=["ev"])
@@ -94,6 +94,42 @@ async def get_ev_sessions(
             .offset(offset)
         )
         return list(result.scalars().all())
+
+
+@router.get("/debug")
+async def get_ev_debug():
+    """Returns the live EV charging detection state — useful for diagnosing config issues."""
+    ev_settings = app_svc.get_all()
+    device_id = ev_settings.get("ev_wallbox_device_id")
+    cap_key = ev_settings.get("ev_charging_capability_key", "")
+    charging_value = ev_settings.get("ev_charging_value", "charging")
+
+    current_value = None
+    last_updated = None
+
+    if device_id and cap_key:
+        async with async_session() as db:
+            result = await db.execute(
+                select(DeviceState).where(
+                    DeviceState.device_id == device_id,
+                    DeviceState.capability_key == cap_key,
+                )
+            )
+            ds = result.scalar_one_or_none()
+            if ds:
+                current_value = ds.value_string
+                last_updated = ds.updated_at
+
+    return {
+        "enabled": settings.ev_charging_enabled,
+        "configured": bool(device_id and cap_key),
+        "wallbox_device_id": device_id,
+        "capability_key": cap_key,
+        "charging_value": charging_value,
+        "current_value": current_value,
+        "is_match": current_value == charging_value if current_value is not None else False,
+        "last_updated": last_updated,
+    }
 
 
 @router.get("/summary", response_model=EVSummary)
