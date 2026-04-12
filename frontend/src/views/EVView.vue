@@ -172,7 +172,7 @@ function sessionDate(s: EVSession): string {
 }
 
 function sessionDuration(s: EVSession): string {
-  return formatDuration(s.duration_solar_seconds, s.duration_grid_seconds)
+  return formatSeconds(s.duration_solar_seconds + s.duration_grid_seconds)
 }
 
 function sessionKm(s: EVSession): string {
