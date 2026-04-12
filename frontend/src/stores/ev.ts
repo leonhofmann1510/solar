@@ -28,10 +28,15 @@ export const useEVStore = defineStore('ev', () => {
     duration_solar_seconds: number
     duration_grid_seconds: number
   }) {
-    if (data.is_charging && status.value.active_session) {
-      status.value.active_session.duration_solar_seconds = data.duration_solar_seconds
-      status.value.active_session.duration_grid_seconds = data.duration_grid_seconds
-    } else if (!data.is_charging) {
+    if (data.is_charging) {
+      if (!status.value.active_session || status.value.active_session.id !== data.session_id) {
+        // Session not in store yet (page loaded mid-session, or backend restarted) — fetch it
+        fetchStatus()
+      } else {
+        status.value.active_session.duration_solar_seconds = data.duration_solar_seconds
+        status.value.active_session.duration_grid_seconds = data.duration_grid_seconds
+      }
+    } else {
       status.value.active_session = null
     }
   }

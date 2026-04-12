@@ -177,6 +177,10 @@ async def poll_loop(app_state: AppState) -> None:
                                 _ev_session_solar_seconds += interval
                             else:
                                 _ev_session_grid_seconds += interval
+                            logger.info(
+                                "EV ongoing: session=%s solar=%ds grid=%ds (is_solar=%s)",
+                                _ev_active_session_id, _ev_session_solar_seconds, _ev_session_grid_seconds, is_solar,
+                            )
 
                         elif not is_charging and _ev_was_charging:
                             # SESSION END
