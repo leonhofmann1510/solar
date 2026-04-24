@@ -38,6 +38,11 @@ const router = createRouter({
       name: 'ev',
       component: () => import('@/views/EVView.vue'),
     },
+    {
+      path: '/data',
+      name: 'data-management',
+      component: () => import('@/views/DataManagementView.vue'),
+    },
   ],
 })
 
