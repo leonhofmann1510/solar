@@ -61,6 +61,8 @@ class DataEVSessionOut(BaseModel):
 
 
 class DataEVSessionUpdate(BaseModel):
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
     kwh_total: float | None = None
     kwh_solar: float | None = None
     kwh_grid: float | None = None
@@ -207,6 +209,10 @@ async def update_ev_session(
     ev = await session.get(EVSession, id)
     if not ev:
         raise HTTPException(404, "Record not found")
+    if body.started_at is not None:
+        ev.started_at = body.started_at
+    if body.ended_at is not None:
+        ev.ended_at = body.ended_at
     if body.kwh_total is not None:
         ev.kwh_total = body.kwh_total
     if body.kwh_solar is not None:

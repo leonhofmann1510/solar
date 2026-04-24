@@ -54,9 +54,20 @@ const editMeterDraft = ref<MeterReadingUpdate & { id: number; timestamp: string 
 })
 
 const editEVVisible = ref(false)
-const editEVDraft = ref<EVSessionUpdate & { id: number; started_at: string }>({
+const editEVDraft = ref<{
+  id: number
+  startedAt: Date | null
+  endedAt: Date | null
+  kwh_total: number
+  kwh_solar: number
+  kwh_grid: number
+  charging_power_kw: number
+  cost_eur: number
+  savings_vs_gas_eur: number
+}>({
   id: 0,
-  started_at: '',
+  startedAt: null,
+  endedAt: null,
   kwh_total: 0,
   kwh_solar: 0,
   kwh_grid: 0,
@@ -184,7 +195,8 @@ function confirmDeleteMeter(id: number) {
 function openEditEV(row: EVSessionRecord) {
   editEVDraft.value = {
     id: row.id,
-    started_at: row.started_at,
+    startedAt: new Date(row.started_at),
+    endedAt: row.ended_at ? new Date(row.ended_at) : null,
     kwh_total: row.kwh_total,
     kwh_solar: row.kwh_solar,
     kwh_grid: row.kwh_grid,
@@ -196,8 +208,12 @@ function openEditEV(row: EVSessionRecord) {
 }
 
 async function saveEV() {
-  const { id, started_at, ...body } = editEVDraft.value
-  await store.updateEVSession(id, body)
+  const { id, startedAt, endedAt, ...rest } = editEVDraft.value
+  await store.updateEVSession(id, {
+    ...rest,
+    started_at: startedAt ? startedAt.toISOString() : undefined,
+    ended_at: endedAt ? endedAt.toISOString() : undefined,
+  })
   editEVVisible.value = false
 }
 
@@ -443,8 +459,15 @@ function confirmDeleteEV(id: number) {
       :style="{ width: '90vw', maxWidth: '480px' }"
     >
       <div class="space-y-3 text-sm">
-        <div class="text-sf-text-3 text-xs">
-          <span class="font-medium">Started:</span> {{ fmtTs(editEVDraft.started_at) }}
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1">
+            <label class="block text-sf-text-2 font-medium">Started</label>
+            <DatePicker v-model="editEVDraft.startedAt" showTime hourFormat="24" dateFormat="dd.mm.yy" fluid />
+          </div>
+          <div class="space-y-1">
+            <label class="block text-sf-text-2 font-medium">Ended</label>
+            <DatePicker v-model="editEVDraft.endedAt" showTime hourFormat="24" dateFormat="dd.mm.yy" fluid />
+          </div>
         </div>
         <div class="space-y-2">
           <label class="block text-sf-text-2 font-medium">Total (kWh)</label>

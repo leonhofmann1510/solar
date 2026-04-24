@@ -40,6 +40,8 @@ export interface EVSessionRecord {
 }
 
 export interface EVSessionUpdate {
+  started_at?: string | null
+  ended_at?: string | null
   kwh_total?: number | null
   kwh_solar?: number | null
   kwh_grid?: number | null
