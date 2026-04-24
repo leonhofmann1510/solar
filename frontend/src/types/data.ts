@@ -46,8 +46,6 @@ export interface EVSessionUpdate {
   kwh_solar?: number | null
   kwh_grid?: number | null
   charging_power_kw?: number | null
-  cost_eur?: number | null
-  savings_vs_gas_eur?: number | null
 }
 
 export interface DataCounts {

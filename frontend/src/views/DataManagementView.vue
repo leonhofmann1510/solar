@@ -62,8 +62,6 @@ const editEVDraft = ref<{
   kwh_solar: number
   kwh_grid: number
   charging_power_kw: number
-  cost_eur: number
-  savings_vs_gas_eur: number
 }>({
   id: 0,
   startedAt: null,
@@ -72,8 +70,6 @@ const editEVDraft = ref<{
   kwh_solar: 0,
   kwh_grid: 0,
   charging_power_kw: 0,
-  cost_eur: 0,
-  savings_vs_gas_eur: 0,
 })
 
 // ── Init ───────────────────────────────────────────────────────────────────────
@@ -201,8 +197,6 @@ function openEditEV(row: EVSessionRecord) {
     kwh_solar: row.kwh_solar,
     kwh_grid: row.kwh_grid,
     charging_power_kw: row.charging_power_kw,
-    cost_eur: row.cost_eur,
-    savings_vs_gas_eur: row.savings_vs_gas_eur,
   }
   editEVVisible.value = true
 }
@@ -485,14 +479,7 @@ function confirmDeleteEV(id: number) {
           <label class="block text-sf-text-2 font-medium">Charging Power (kW)</label>
           <InputNumber v-model="editEVDraft.charging_power_kw" :minFractionDigits="1" :maxFractionDigits="2" :min="0" fluid />
         </div>
-        <div class="space-y-2">
-          <label class="block text-sf-text-2 font-medium">Cost (€)</label>
-          <InputNumber v-model="editEVDraft.cost_eur" :minFractionDigits="2" :maxFractionDigits="2" :min="0" fluid />
-        </div>
-        <div class="space-y-2">
-          <label class="block text-sf-text-2 font-medium">Savings vs Gas (€)</label>
-          <InputNumber v-model="editEVDraft.savings_vs_gas_eur" :minFractionDigits="2" :maxFractionDigits="2" fluid />
-        </div>
+        <p class="text-xs text-sf-text-3">Cost and savings are recalculated automatically from the kWh values.</p>
       </div>
       <template #footer>
         <Button label="Cancel" severity="secondary" @click="editEVVisible = false" />
