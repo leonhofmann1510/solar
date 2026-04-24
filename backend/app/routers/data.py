@@ -213,6 +213,17 @@ async def update_ev_session(
         ev.started_at = body.started_at
     if body.ended_at is not None:
         ev.ended_at = body.ended_at
+    # Recalculate stored durations when timestamps change
+    if (body.started_at is not None or body.ended_at is not None) and ev.ended_at is not None:
+        new_total = max(0, int((ev.ended_at - ev.started_at).total_seconds()))
+        old_total = ev.duration_solar_seconds + ev.duration_grid_seconds
+        if old_total > 0:
+            solar_ratio = ev.duration_solar_seconds / old_total
+            ev.duration_solar_seconds = int(new_total * solar_ratio)
+            ev.duration_grid_seconds = new_total - ev.duration_solar_seconds
+        else:
+            ev.duration_solar_seconds = new_total
+            ev.duration_grid_seconds = 0
     if body.kwh_total is not None:
         ev.kwh_total = body.kwh_total
     if body.kwh_solar is not None:
