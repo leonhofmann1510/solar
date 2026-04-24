@@ -232,6 +232,14 @@ async def update_ev_session(
         ev.kwh_grid = body.kwh_grid
     if body.charging_power_kw is not None:
         ev.charging_power_kw = body.charging_power_kw
+    # Recalculate cost and savings when any kWh field changes, using stored price snapshots
+    if any(f is not None for f in (body.kwh_total, body.kwh_solar, body.kwh_grid)):
+        eff = ev.efficiency_km_per_kwh
+        km_solar = ev.kwh_solar * eff
+        km_grid = ev.kwh_grid * eff
+        km_total = ev.kwh_total * eff
+        ev.cost_eur = round((km_solar / 100 * ev.cost_per_100km_solar_eur) + (km_grid / 100 * ev.cost_per_100km_grid_eur), 2)
+        ev.savings_vs_gas_eur = round((km_total / 100 * ev.cost_per_100km_gas_eur) - ev.cost_eur, 2)
     if body.cost_eur is not None:
         ev.cost_eur = body.cost_eur
     if body.savings_vs_gas_eur is not None:
