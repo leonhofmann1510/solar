@@ -307,9 +307,12 @@ function confirmDeleteEV(id: number) {
 <template>
   <AppShell>
     <!-- Page header -->
-    <div class="mb-6">
-      <h1 class="text-xl font-semibold text-sf-text-1">Data Management</h1>
-      <p class="text-sm text-sf-text-2 mt-0.5">Inspect and correct inverter stats, meter readings, and EV sessions</p>
+    <div class="mb-6 flex items-start justify-between gap-3">
+      <div>
+        <h1 class="text-xl font-semibold text-sf-text-1">Data Management</h1>
+        <p class="text-sm text-sf-text-2 mt-0.5">Inspect and correct inverter stats, meter readings, and EV sessions</p>
+      </div>
+      <Button label="Add" icon="pi pi-plus" size="small" class="shrink-0 mt-1" @click="openAdd" />
     </div>
 
     <!-- Filter bar -->
@@ -333,8 +336,8 @@ function confirmDeleteEV(id: number) {
     </div>
 
     <!-- Tab switcher -->
-    <div class="flex items-center justify-between mb-3">
-      <div class="flex gap-1 bg-slate-100 rounded-sf p-1">
+    <div class="mb-3">
+      <div class="flex gap-1 bg-slate-100 rounded-sf p-1 overflow-x-auto">
         <button
           v-for="tab in tabs"
           :key="tab.value"
@@ -354,7 +357,6 @@ function confirmDeleteEV(id: number) {
           >{{ countFor(tab.value) }}</span>
         </button>
       </div>
-      <Button label="Add" icon="pi pi-plus" size="small" @click="openAdd" />
     </div>
 
     <!-- Inverter Stats -->
