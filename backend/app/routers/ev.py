@@ -49,6 +49,8 @@ class EVSummary(BaseModel):
     last_week_km: float
     total_savings_eur: float
     total_sessions: int
+    total_kwh_solar: float
+    total_kwh_grid: float
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -172,6 +174,19 @@ async def get_ev_summary() -> EVSummary:
         )
         total_sessions = int(tc.scalar())
 
+        # Total solar / grid kWh across all sessions
+        tsk = await db.execute(
+            select(func.coalesce(func.sum(EVSession.kwh_solar), 0.0))
+            .where(EVSession.ended_at.is_not(None))
+        )
+        total_kwh_solar = float(tsk.scalar())
+
+        tgk = await db.execute(
+            select(func.coalesce(func.sum(EVSession.kwh_grid), 0.0))
+            .where(EVSession.ended_at.is_not(None))
+        )
+        total_kwh_grid = float(tgk.scalar())
+
     return EVSummary(
         this_week_kwh=round(this_week_kwh, 2),
         last_week_kwh=round(last_week_kwh, 2),
@@ -179,4 +194,6 @@ async def get_ev_summary() -> EVSummary:
         last_week_km=round(last_week_kwh * efficiency, 1),
         total_savings_eur=round(total_savings, 2),
         total_sessions=total_sessions,
+        total_kwh_solar=round(total_kwh_solar, 2),
+        total_kwh_grid=round(total_kwh_grid, 2),
     )

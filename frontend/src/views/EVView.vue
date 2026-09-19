@@ -138,8 +138,8 @@ const barChartOptions = {
 
 // ── Doughnut: solar vs grid all sessions ─────────────────────────────────
 
-const totalSolar = computed(() => sessions.value.reduce((s, r) => s + r.kwh_solar, 0))
-const totalGrid = computed(() => sessions.value.reduce((s, r) => s + r.kwh_grid, 0))
+const totalSolar = computed(() => summary.value?.total_kwh_solar ?? 0)
+const totalGrid = computed(() => summary.value?.total_kwh_grid ?? 0)
 const hasDoughnutData = computed(() => totalSolar.value + totalGrid.value > 0)
 
 const doughnutData = computed(() => ({
@@ -271,7 +271,7 @@ function sessionKm(s: EVSession): string {
     </div>
 
     <!-- Sessions log -->
-    <SectionHeader :title="`Sessions (${sessions.length})`" />
+    <SectionHeader :title="`Sessions (${summary?.total_sessions ?? sessions.length})`" />
     <div v-if="sessions.length" class="bg-sf-surface rounded-sf shadow-sf overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">

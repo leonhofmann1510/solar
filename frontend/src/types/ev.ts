@@ -29,4 +29,6 @@ export interface EVSummary {
   last_week_km: number
   total_savings_eur: number
   total_sessions: number
+  total_kwh_solar: number
+  total_kwh_grid: number
 }
