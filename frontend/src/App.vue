@@ -3,11 +3,13 @@ import { ref, onUnmounted } from 'vue'
 import { useReadingsStore } from '@/stores/readings'
 import { useDevicesStore } from '@/stores/devices'
 import { useMeterStore } from '@/stores/meter'
+import { useEVStore } from '@/stores/ev'
 import Toast from 'primevue/toast'
 
 const readingsStore = useReadingsStore()
 const devicesStore = useDevicesStore()
 const meterStore = useMeterStore()
+const evStore = useEVStore()
 
 const wsConnected = ref(false)
 let socket: WebSocket | null = null
@@ -38,6 +40,11 @@ function connect() {
         devicesStore.fetchPending()
       } else if (data.event === 'meter_reading') {
         meterStore.pushLiveReading(data)
+      } else if (data.event === 'ev_status') {
+        evStore.pushLiveStatus(data)
+      } else if (data.event === 'ev_session_ended') {
+        evStore.fetchStatus()
+        evStore.fetchSummary()
       } else if (data.inverter_id) {
         readingsStore.pushLiveReading(data)
       }
