@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
 from app.models import EVSession, InverterDailyStat, MeterReading
+from app.services import app_settings as app_svc
 
 router = APIRouter(prefix="/api/data", tags=["data"])
 
@@ -69,6 +70,29 @@ class DataEVSessionUpdate(BaseModel):
     charging_power_kw: float | None = None
 
 
+class InverterDailyStatCreate(BaseModel):
+    timestamp: datetime
+    inverter_id: str
+    pv_yield_today_kwh: float
+    feed_in_today_kwh: float | None = None
+    grid_buy_today_kwh: float | None = None
+
+
+class DataMeterReadingCreate(BaseModel):
+    timestamp: datetime
+    consumption_kwh: float
+    feed_in_kwh: float
+
+
+class DataEVSessionCreate(BaseModel):
+    started_at: datetime
+    ended_at: datetime
+    kwh_total: float
+    kwh_solar: float
+    kwh_grid: float
+    charging_power_kw: float
+
+
 class DataCounts(BaseModel):
     inverter_stats: int
     meter_readings: int
@@ -127,6 +151,26 @@ async def delete_inverter_stat(id: int, session: AsyncSession = Depends(get_sess
     await session.commit()
 
 
+@router.post("/inverter-stats", response_model=InverterDailyStatOut, status_code=201)
+async def create_inverter_stat(
+    body: InverterDailyStatCreate,
+    session: AsyncSession = Depends(get_session),
+):
+    stat = InverterDailyStat(
+        timestamp=body.timestamp,
+        inverter_id=body.inverter_id,
+        date=body.timestamp.date(),
+        hour=body.timestamp.hour,
+        pv_yield_today_kwh=body.pv_yield_today_kwh,
+        feed_in_today_kwh=body.feed_in_today_kwh,
+        grid_buy_today_kwh=body.grid_buy_today_kwh,
+    )
+    session.add(stat)
+    await session.commit()
+    await session.refresh(stat)
+    return stat
+
+
 # ── Meter Readings ─────────────────────────────────────────────────────────────
 
 @router.get("/meter-readings", response_model=list[DataMeterReadingOut])
@@ -172,6 +216,22 @@ async def delete_meter_reading(id: int, session: AsyncSession = Depends(get_sess
         raise HTTPException(404, "Record not found")
     await session.delete(reading)
     await session.commit()
+
+
+@router.post("/meter-readings", response_model=DataMeterReadingOut, status_code=201)
+async def create_meter_reading(
+    body: DataMeterReadingCreate,
+    session: AsyncSession = Depends(get_session),
+):
+    reading = MeterReading(
+        timestamp=body.timestamp,
+        consumption_kwh=body.consumption_kwh,
+        feed_in_kwh=body.feed_in_kwh,
+    )
+    session.add(reading)
+    await session.commit()
+    await session.refresh(reading)
+    return reading
 
 
 # ── EV Sessions ────────────────────────────────────────────────────────────────
@@ -249,6 +309,46 @@ async def delete_ev_session(id: int, session: AsyncSession = Depends(get_session
         raise HTTPException(404, "Record not found")
     await session.delete(ev)
     await session.commit()
+
+
+@router.post("/ev-sessions", response_model=DataEVSessionOut, status_code=201)
+async def create_ev_session(
+    body: DataEVSessionCreate,
+    session: AsyncSession = Depends(get_session),
+):
+    cfg = app_svc.get_all()
+    efficiency = float(cfg.get("ev_efficiency_km_per_kwh", 6.0))
+    cost_solar = float(cfg.get("ev_cost_per_100km_solar_eur", 0.5))
+    cost_grid = float(cfg.get("ev_cost_per_100km_grid_eur", 4.5))
+    cost_gas = float(cfg.get("ev_cost_per_100km_gas_eur", 10.0))
+
+    total_seconds = max(0, int((body.ended_at - body.started_at).total_seconds()))
+    km_solar = body.kwh_solar * efficiency
+    km_grid = body.kwh_grid * efficiency
+    km_total = body.kwh_total * efficiency
+    cost_eur = round((km_solar / 100 * cost_solar) + (km_grid / 100 * cost_grid), 2)
+    savings_vs_gas_eur = round((km_total / 100 * cost_gas) - cost_eur, 2)
+
+    ev = EVSession(
+        started_at=body.started_at,
+        ended_at=body.ended_at,
+        kwh_total=body.kwh_total,
+        kwh_solar=body.kwh_solar,
+        kwh_grid=body.kwh_grid,
+        charging_power_kw=body.charging_power_kw,
+        duration_solar_seconds=total_seconds,
+        duration_grid_seconds=0,
+        efficiency_km_per_kwh=efficiency,
+        cost_per_100km_solar_eur=cost_solar,
+        cost_per_100km_grid_eur=cost_grid,
+        cost_per_100km_gas_eur=cost_gas,
+        cost_eur=cost_eur,
+        savings_vs_gas_eur=savings_vs_gas_eur,
+    )
+    session.add(ev)
+    await session.commit()
+    await session.refresh(ev)
+    return ev
 
 
 # ── Counts ─────────────────────────────────────────────────────────────────────

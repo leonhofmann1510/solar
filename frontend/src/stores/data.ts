@@ -1,6 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
+  createEVSession,
+  createInverterStat,
+  createMeterReading,
   deleteEVSession,
   deleteInverterStat,
   deleteMeterReading,
@@ -14,10 +17,13 @@ import {
 } from '@/api/data'
 import type {
   DataCounts,
+  EVSessionCreate,
   EVSessionRecord,
   EVSessionUpdate,
   InverterDailyStat,
+  InverterDailyStatCreate,
   InverterDailyStatUpdate,
+  MeterReadingCreate,
   MeterReadingRecord,
   MeterReadingUpdate,
 } from '@/types/data'
@@ -125,6 +131,24 @@ export const useDataStore = defineStore('data', () => {
     counts.value.ev_sessions = Math.max(0, counts.value.ev_sessions - 1)
   }
 
+  async function addInverterStat(body: InverterDailyStatCreate) {
+    const created = await createInverterStat(body)
+    inverterStats.value.unshift(created)
+    counts.value.inverter_stats++
+  }
+
+  async function addMeterReading(body: MeterReadingCreate) {
+    const created = await createMeterReading(body)
+    meterReadings.value.unshift(created)
+    counts.value.meter_readings++
+  }
+
+  async function addEVSession(body: EVSessionCreate) {
+    const created = await createEVSession(body)
+    evSessions.value.unshift(created)
+    counts.value.ev_sessions++
+  }
+
   return {
     inverterStats,
     meterReadings,
@@ -146,5 +170,8 @@ export const useDataStore = defineStore('data', () => {
     deleteMeterReadingRecord,
     updateEVSession,
     deleteEVSessionRecord,
+    addInverterStat,
+    addMeterReading,
+    addEVSession,
   }
 })

@@ -1,10 +1,13 @@
 import client from './client'
 import type {
   DataCounts,
+  EVSessionCreate,
   EVSessionRecord,
   EVSessionUpdate,
   InverterDailyStat,
+  InverterDailyStatCreate,
   InverterDailyStatUpdate,
+  MeterReadingCreate,
   MeterReadingRecord,
   MeterReadingUpdate,
 } from '@/types/data'
@@ -43,6 +46,11 @@ export async function deleteInverterStat(id: number): Promise<void> {
   await client.delete(`/api/data/inverter-stats/${id}`)
 }
 
+export async function createInverterStat(body: InverterDailyStatCreate): Promise<InverterDailyStat> {
+  const { data } = await client.post<InverterDailyStat>('/api/data/inverter-stats', body)
+  return data
+}
+
 // ── Meter Readings ─────────────────────────────────────────────────────────────
 
 export async function getMeterReadingRecords(params: {
@@ -71,6 +79,11 @@ export async function deleteMeterReading(id: number): Promise<void> {
   await client.delete(`/api/data/meter-readings/${id}`)
 }
 
+export async function createMeterReading(body: MeterReadingCreate): Promise<MeterReadingRecord> {
+  const { data } = await client.post<MeterReadingRecord>('/api/data/meter-readings', body)
+  return data
+}
+
 // ── EV Sessions ────────────────────────────────────────────────────────────────
 
 export async function getEVSessionRecords(params: {
@@ -97,6 +110,11 @@ export async function patchEVSession(id: number, body: EVSessionUpdate): Promise
 
 export async function deleteEVSession(id: number): Promise<void> {
   await client.delete(`/api/data/ev-sessions/${id}`)
+}
+
+export async function createEVSession(body: EVSessionCreate): Promise<EVSessionRecord> {
+  const { data } = await client.post<EVSessionRecord>('/api/data/ev-sessions', body)
+  return data
 }
 
 // ── Counts ─────────────────────────────────────────────────────────────────────

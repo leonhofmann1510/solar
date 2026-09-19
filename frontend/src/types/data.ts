@@ -48,6 +48,29 @@ export interface EVSessionUpdate {
   charging_power_kw?: number | null
 }
 
+export interface InverterDailyStatCreate {
+  timestamp: string
+  inverter_id: string
+  pv_yield_today_kwh: number
+  feed_in_today_kwh: number | null
+  grid_buy_today_kwh: number | null
+}
+
+export interface MeterReadingCreate {
+  timestamp: string
+  consumption_kwh: number
+  feed_in_kwh: number
+}
+
+export interface EVSessionCreate {
+  started_at: string
+  ended_at: string
+  kwh_total: number
+  kwh_solar: number
+  kwh_grid: number
+  charging_power_kw: number
+}
+
 export interface DataCounts {
   inverter_stats: number
   meter_readings: number

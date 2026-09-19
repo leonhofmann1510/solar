@@ -3,7 +3,7 @@ import { onMounted, ref, watch } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import AppShell from '@/components/layout/AppShell.vue'
 import { useDataStore } from '@/stores/data'
-import type { EVSessionRecord, EVSessionUpdate, InverterDailyStat, InverterDailyStatUpdate, MeterReadingRecord, MeterReadingUpdate } from '@/types/data'
+import type { EVSessionCreate, EVSessionRecord, EVSessionUpdate, InverterDailyStat, InverterDailyStatCreate, InverterDailyStatUpdate, MeterReadingCreate, MeterReadingRecord, MeterReadingUpdate } from '@/types/data'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
 import ConfirmDialog from 'primevue/confirmdialog'
@@ -71,6 +71,86 @@ const editEVDraft = ref<{
   kwh_grid: 0,
   charging_power_kw: 0,
 })
+
+// ── Add dialogs ────────────────────────────────────────────────────────────────
+
+const addInverterVisible = ref(false)
+const addInverterDraft = ref<InverterDailyStatCreate & { timestampDate: Date | null }>({
+  timestampDate: null,
+  timestamp: '',
+  inverter_id: 'inv1',
+  pv_yield_today_kwh: 0,
+  feed_in_today_kwh: null,
+  grid_buy_today_kwh: null,
+})
+
+const addMeterVisible = ref(false)
+const addMeterDraft = ref<MeterReadingCreate & { timestampDate: Date | null }>({
+  timestampDate: null,
+  timestamp: '',
+  consumption_kwh: 0,
+  feed_in_kwh: 0,
+})
+
+const addEVVisible = ref(false)
+const addEVDraft = ref<{ startedAt: Date | null; endedAt: Date | null; kwh_total: number; kwh_solar: number; kwh_grid: number; charging_power_kw: number }>({
+  startedAt: null,
+  endedAt: null,
+  kwh_total: 0,
+  kwh_solar: 0,
+  kwh_grid: 0,
+  charging_power_kw: 0,
+})
+
+function openAdd() {
+  const now = new Date()
+  if (activeTab.value === 'inverter') {
+    addInverterDraft.value = { timestampDate: now, timestamp: now.toISOString(), inverter_id: 'inv1', pv_yield_today_kwh: 0, feed_in_today_kwh: null, grid_buy_today_kwh: null }
+    addInverterVisible.value = true
+  } else if (activeTab.value === 'meter') {
+    addMeterDraft.value = { timestampDate: now, timestamp: now.toISOString(), consumption_kwh: 0, feed_in_kwh: 0 }
+    addMeterVisible.value = true
+  } else {
+    const oneHourAgo = new Date(now.getTime() - 3600_000)
+    addEVDraft.value = { startedAt: oneHourAgo, endedAt: now, kwh_total: 0, kwh_solar: 0, kwh_grid: 0, charging_power_kw: 0 }
+    addEVVisible.value = true
+  }
+}
+
+async function saveAddInverter() {
+  const d = addInverterDraft.value
+  await store.addInverterStat({
+    timestamp: d.timestampDate ? d.timestampDate.toISOString() : new Date().toISOString(),
+    inverter_id: d.inverter_id,
+    pv_yield_today_kwh: d.pv_yield_today_kwh,
+    feed_in_today_kwh: d.feed_in_today_kwh,
+    grid_buy_today_kwh: d.grid_buy_today_kwh,
+  })
+  addInverterVisible.value = false
+}
+
+async function saveAddMeter() {
+  const d = addMeterDraft.value
+  await store.addMeterReading({
+    timestamp: d.timestampDate ? d.timestampDate.toISOString() : new Date().toISOString(),
+    consumption_kwh: d.consumption_kwh,
+    feed_in_kwh: d.feed_in_kwh,
+  })
+  addMeterVisible.value = false
+}
+
+async function saveAddEV() {
+  const d = addEVDraft.value
+  await store.addEVSession({
+    started_at: d.startedAt ? d.startedAt.toISOString() : new Date().toISOString(),
+    ended_at: d.endedAt ? d.endedAt.toISOString() : new Date().toISOString(),
+    kwh_total: d.kwh_total,
+    kwh_solar: d.kwh_solar,
+    kwh_grid: d.kwh_grid,
+    charging_power_kw: d.charging_power_kw,
+  })
+  addEVVisible.value = false
+}
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 
@@ -274,6 +354,7 @@ function confirmDeleteEV(id: number) {
           >{{ countFor(tab.value) }}</span>
         </button>
       </div>
+      <Button label="Add" icon="pi pi-plus" size="small" @click="openAdd" />
     </div>
 
     <!-- Inverter Stats -->
@@ -484,6 +565,126 @@ function confirmDeleteEV(id: number) {
       <template #footer>
         <Button label="Cancel" severity="secondary" @click="editEVVisible = false" />
         <Button label="Save" @click="saveEV" />
+      </template>
+    </Dialog>
+
+    <!-- Add: Inverter Stat -->
+    <Dialog
+      v-model:visible="addInverterVisible"
+      header="Add Inverter Stat"
+      modal
+      :style="{ width: '90vw', maxWidth: '480px' }"
+    >
+      <div class="space-y-3 text-sm">
+        <div class="space-y-2">
+          <label class="block text-sf-text-2 font-medium">Inverter</label>
+          <div class="flex gap-2">
+            <Button
+              label="inv1"
+              :severity="addInverterDraft.inverter_id === 'inv1' ? 'primary' : 'secondary'"
+              size="small"
+              @click="addInverterDraft.inverter_id = 'inv1'"
+            />
+            <Button
+              label="inv2"
+              :severity="addInverterDraft.inverter_id === 'inv2' ? 'primary' : 'secondary'"
+              size="small"
+              @click="addInverterDraft.inverter_id = 'inv2'"
+            />
+          </div>
+        </div>
+        <div class="space-y-2">
+          <label class="block text-sf-text-2 font-medium">Timestamp</label>
+          <DatePicker v-model="addInverterDraft.timestampDate" showTime hourFormat="24" dateFormat="dd.mm.yy" fluid />
+        </div>
+        <div class="space-y-2">
+          <label class="block text-sf-text-2 font-medium">PV Yield (kWh)</label>
+          <InputNumber v-model="addInverterDraft.pv_yield_today_kwh" :minFractionDigits="2" :maxFractionDigits="4" :min="0" fluid />
+        </div>
+        <div class="space-y-2">
+          <label class="block text-sf-text-2 font-medium">Feed-in (kWh) <span class="text-sf-text-3 font-normal">(optional)</span></label>
+          <InputNumber v-model="addInverterDraft.feed_in_today_kwh" :minFractionDigits="2" :maxFractionDigits="4" :min="0" fluid />
+        </div>
+        <div class="space-y-2">
+          <label class="block text-sf-text-2 font-medium">Grid Buy (kWh) <span class="text-sf-text-3 font-normal">(optional)</span></label>
+          <InputNumber v-model="addInverterDraft.grid_buy_today_kwh" :minFractionDigits="2" :maxFractionDigits="4" :min="0" fluid />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" @click="addInverterVisible = false" />
+        <Button label="Save" @click="saveAddInverter" />
+      </template>
+    </Dialog>
+
+    <!-- Add: Meter Reading -->
+    <Dialog
+      v-model:visible="addMeterVisible"
+      header="Add Meter Reading"
+      modal
+      :style="{ width: '90vw', maxWidth: '480px' }"
+    >
+      <div class="space-y-3 text-sm">
+        <div class="space-y-2">
+          <label class="block text-sf-text-2 font-medium">Timestamp</label>
+          <DatePicker v-model="addMeterDraft.timestampDate" showTime hourFormat="24" dateFormat="dd.mm.yy" fluid />
+        </div>
+        <Message severity="warn" :closable="false" class="text-xs">
+          These are cumulative kWh counter values, not per-interval deltas. Editing affects all derived calculations.
+        </Message>
+        <div class="space-y-2">
+          <label class="block text-sf-text-2 font-medium">Consumption (kWh)</label>
+          <InputNumber v-model="addMeterDraft.consumption_kwh" :minFractionDigits="2" :maxFractionDigits="4" :min="0" fluid />
+        </div>
+        <div class="space-y-2">
+          <label class="block text-sf-text-2 font-medium">Feed-in (kWh)</label>
+          <InputNumber v-model="addMeterDraft.feed_in_kwh" :minFractionDigits="2" :maxFractionDigits="4" :min="0" fluid />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" @click="addMeterVisible = false" />
+        <Button label="Save" @click="saveAddMeter" />
+      </template>
+    </Dialog>
+
+    <!-- Add: EV Session -->
+    <Dialog
+      v-model:visible="addEVVisible"
+      header="Add EV Session"
+      modal
+      :style="{ width: '90vw', maxWidth: '480px' }"
+    >
+      <div class="space-y-3 text-sm">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1">
+            <label class="block text-sf-text-2 font-medium">Started</label>
+            <DatePicker v-model="addEVDraft.startedAt" showTime hourFormat="24" dateFormat="dd.mm.yy" fluid />
+          </div>
+          <div class="space-y-1">
+            <label class="block text-sf-text-2 font-medium">Ended</label>
+            <DatePicker v-model="addEVDraft.endedAt" showTime hourFormat="24" dateFormat="dd.mm.yy" fluid />
+          </div>
+        </div>
+        <div class="space-y-2">
+          <label class="block text-sf-text-2 font-medium">Total (kWh)</label>
+          <InputNumber v-model="addEVDraft.kwh_total" :minFractionDigits="2" :maxFractionDigits="3" :min="0" fluid />
+        </div>
+        <div class="space-y-2">
+          <label class="block text-sf-text-2 font-medium">Solar (kWh)</label>
+          <InputNumber v-model="addEVDraft.kwh_solar" :minFractionDigits="2" :maxFractionDigits="3" :min="0" fluid />
+        </div>
+        <div class="space-y-2">
+          <label class="block text-sf-text-2 font-medium">Grid (kWh)</label>
+          <InputNumber v-model="addEVDraft.kwh_grid" :minFractionDigits="2" :maxFractionDigits="3" :min="0" fluid />
+        </div>
+        <div class="space-y-2">
+          <label class="block text-sf-text-2 font-medium">Charging Power (kW)</label>
+          <InputNumber v-model="addEVDraft.charging_power_kw" :minFractionDigits="1" :maxFractionDigits="2" :min="0" fluid />
+        </div>
+        <p class="text-xs text-sf-text-3">Cost and savings are calculated automatically from the kWh values.</p>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" @click="addEVVisible = false" />
+        <Button label="Save" @click="saveAddEV" />
       </template>
     </Dialog>
 
